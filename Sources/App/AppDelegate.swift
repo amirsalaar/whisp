@@ -13,6 +13,8 @@ internal class AppDelegate: NSObject, NSApplicationDelegate {
     var pressAndHoldMonitor: PressAndHoldKeyMonitor?
     var pressAndHoldConfiguration = PressAndHoldSettings.configuration()
     var isHoldRecordingActive = false
+    var recordingStartTime: Date?
+    var elapsedTimeTimer: Timer?
 
     enum HotkeyTriggerSource {
         case standardHotkey

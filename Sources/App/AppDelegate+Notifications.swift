@@ -25,6 +25,20 @@ internal extension AppDelegate {
 
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(onTranscriptionStarted),
+            name: .transcriptionStarted,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onTranscriptionCompleted),
+            name: .transcriptionCompleted,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(onPressAndHoldSettingsChanged(_:)),
             name: .pressAndHoldSettingsChanged,
             object: nil

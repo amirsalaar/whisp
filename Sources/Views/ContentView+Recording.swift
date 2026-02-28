@@ -26,7 +26,7 @@ internal extension ContentView {
     func stopAndProcess() {
         processingTask?.cancel()
         NotificationCenter.default.post(name: .recordingStopped, object: nil)
-        
+
         let shouldHintThisRun = !hasShownFirstModelUseHint && isLocalModelInvocationPlanned()
         if shouldHintThisRun { showFirstModelUseHint = true }
 
@@ -34,6 +34,9 @@ internal extension ContentView {
             isProcessing = true
             transcriptionStartTime = Date()
             progressMessage = "Preparing audio..."
+
+            // Post notification that transcription has started
+            NotificationCenter.default.post(name: .transcriptionStarted, object: nil)
             
             do {
                 try Task.checkCancellation()
@@ -106,12 +109,18 @@ internal extension ContentView {
                     transcriptionStartTime = nil
                     showConfirmationAndPaste(text: finalText)
                     if shouldHintThisRun { hasShownFirstModelUseHint = true; showFirstModelUseHint = false }
+
+                    // Post notification that transcription completed successfully
+                    NotificationCenter.default.post(name: .transcriptionCompleted, object: nil)
                 }
             } catch is CancellationError {
                 await MainActor.run {
                     isProcessing = false
                     transcriptionStartTime = nil
                     if shouldHintThisRun { hasShownFirstModelUseHint = true; showFirstModelUseHint = false }
+
+                    // Post notification that transcription completed (cancelled)
+                    NotificationCenter.default.post(name: .transcriptionCompleted, object: nil)
                 }
             } catch {
                 if case let SpeechToTextError.localTranscriptionFailed(inner) = error,
@@ -142,6 +151,11 @@ internal extension ContentView {
                         transcriptionStartTime = nil
                         if shouldHintThisRun { hasShownFirstModelUseHint = true; showFirstModelUseHint = false }
                     }
+                }
+
+                // Post notification that transcription completed (error)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .transcriptionCompleted, object: nil)
                 }
             }
         }
@@ -230,6 +244,9 @@ internal extension ContentView {
                     isProcessing = false
                     transcriptionStartTime = nil
                     if shouldHintThisRun { hasShownFirstModelUseHint = true; showFirstModelUseHint = false }
+
+                    // Post notification that transcription completed (cancelled)
+                    NotificationCenter.default.post(name: .transcriptionCompleted, object: nil)
                 }
             } catch {
                 if case let SpeechToTextError.localTranscriptionFailed(inner) = error,
@@ -260,6 +277,11 @@ internal extension ContentView {
                         transcriptionStartTime = nil
                         if shouldHintThisRun { hasShownFirstModelUseHint = true; showFirstModelUseHint = false }
                     }
+                }
+
+                // Post notification that transcription completed (error)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .transcriptionCompleted, object: nil)
                 }
             }
         }

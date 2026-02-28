@@ -150,32 +150,135 @@ internal extension AppDelegate {
 
         stopRecordingAnimation()
 
+        // Record start time for elapsed time display
+        recordingStartTime = Date()
+
         let iconSize = AppSetupHelper.getAdaptiveMenuBarIconSize()
         let config = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
 
-        let redImage = NSImage(systemSymbolName: "microphone.circle", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
-        redImage?.isTemplate = false
-        let redOutlineImage = redImage?.tinted(with: .systemRed)
+        // WhisperFlow-inspired indigo/purple color (#6466F1)
+        let indigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 1.0)
 
-        let blackImage = NSImage(systemSymbolName: "microphone.circle", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
-        blackImage?.isTemplate = true
+        // Create indigo tinted image
+        let indigoImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        indigoImage?.isTemplate = false
+        let indigoOutlineImage = indigoImage?.tinted(with: indigoColor)
 
-        button.image = redOutlineImage
+        // Create dimmed version for pulse effect
+        let dimmedIndigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 0.5)
+        let dimmedImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        dimmedImage?.isTemplate = false
+        let dimmedOutlineImage = dimmedImage?.tinted(with: dimmedIndigoColor)
 
-        var isRedState = true
+        button.image = indigoOutlineImage
 
-        let queue = DispatchQueue(label: "com.audiowhisper.animation", qos: .background)
+        var isPulseState = true
+
+        let queue = DispatchQueue(label: "com.voiceflow.animation", qos: .background)
         let timer = DispatchSource.makeTimerSource(queue: queue)
 
-        timer.schedule(deadline: .now(), repeating: 0.5)
+        // WhisperFlow-inspired 400ms animation cycle
+        timer.schedule(deadline: .now(), repeating: 0.4)
 
         timer.setEventHandler { [weak button] in
             guard let button = button else { return }
 
-            isRedState.toggle()
+            isPulseState.toggle()
 
             Task { @MainActor in
-                button.image = isRedState ? redOutlineImage : blackImage
+                button.image = isPulseState ? indigoOutlineImage : dimmedOutlineImage
+            }
+        }
+
+        recordingAnimationTimer = timer
+        timer.resume()
+
+        // Start elapsed time timer
+        startElapsedTimeTimer()
+    }
+
+    private func stopRecordingAnimation() {
+        recordingAnimationTimer?.cancel()
+        recordingAnimationTimer = nil
+        stopElapsedTimeTimer()
+        recordingStartTime = nil
+    }
+
+    private func startElapsedTimeTimer() {
+        guard let button = statusItem?.button else { return }
+
+        // Update elapsed time every second
+        elapsedTimeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self, weak button] _ in
+            guard let self = self, let button = button, let startTime = self.recordingStartTime else { return }
+
+            let elapsed = Date().timeIntervalSince(startTime)
+            let minutes = Int(elapsed) / 60
+            let seconds = Int(elapsed) % 60
+            let timeString = String(format: " %d:%02d", minutes, seconds)
+
+            button.title = timeString
+        }
+    }
+
+    private func stopElapsedTimeTimer() {
+        elapsedTimeTimer?.invalidate()
+        elapsedTimeTimer = nil
+
+        // Clear the elapsed time display
+        statusItem?.button?.title = ""
+    }
+
+    @objc func onRecordingStopped() {
+        updateMenuBarIcon(isRecording: false)
+    }
+
+    @objc func onTranscriptionStarted() {
+        showProcessingState()
+    }
+
+    @objc func onTranscriptionCompleted() {
+        resetToIdleState()
+    }
+
+    private func showProcessingState() {
+        guard let button = statusItem?.button else { return }
+
+        stopRecordingAnimation()
+
+        let iconSize = AppSetupHelper.getAdaptiveMenuBarIconSize()
+        let config = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
+
+        // WhisperFlow-inspired indigo/purple color for processing
+        let indigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 1.0)
+
+        // Use a spinner/progress icon
+        let processingImage = NSImage(systemSymbolName: "circle.dotted", accessibilityDescription: "Processing")?.withSymbolConfiguration(config)
+        processingImage?.isTemplate = false
+        let tintedImage = processingImage?.tinted(with: indigoColor)
+
+        button.image = tintedImage
+        button.title = " ..."
+
+        // Animate the spinner with rotation (simulated with icon swap)
+        let queue = DispatchQueue(label: "com.voiceflow.processing", qos: .background)
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+
+        // Rotate through different spinner states every 200ms
+        let spinnerIcons = ["circle.dotted", "circle.dotted.circle", "circle.dotted.and.circle"]
+        var iconIndex = 0
+
+        timer.schedule(deadline: .now(), repeating: 0.2)
+
+        timer.setEventHandler { [weak button] in
+            guard let button = button else { return }
+
+            iconIndex = (iconIndex + 1) % spinnerIcons.count
+            let nextIcon = NSImage(systemSymbolName: spinnerIcons[iconIndex], accessibilityDescription: "Processing")?.withSymbolConfiguration(config)
+            nextIcon?.isTemplate = false
+            let nextTintedImage = nextIcon?.tinted(with: indigoColor)
+
+            Task { @MainActor in
+                button.image = nextTintedImage
             }
         }
 
@@ -183,12 +286,11 @@ internal extension AppDelegate {
         timer.resume()
     }
 
-    private func stopRecordingAnimation() {
-        recordingAnimationTimer?.cancel()
-        recordingAnimationTimer = nil
-    }
+    private func resetToIdleState() {
+        guard let button = statusItem?.button else { return }
 
-    @objc func onRecordingStopped() {
-        updateMenuBarIcon(isRecording: false)
+        stopRecordingAnimation()
+        button.image = AppSetupHelper.createMenuBarIcon()
+        button.title = ""
     }
 }
