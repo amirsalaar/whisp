@@ -1,12 +1,13 @@
-.PHONY: help build build-notarize test clean update-brew-cask publish-brew-cask release
+.PHONY: help build build-notarize install test clean update-brew-cask publish-brew-cask release
 
 SCRIPTS := scripts
 
 # Default target
 help:
-	@echo "AudioWhisper Makefile"
+	@echo "VoiceFlow Makefile"
 	@echo ""
 	@echo "Available targets:"
+	@echo "  install            - Build and install VoiceFlow to /Applications/ (recommended)"
 	@echo "  build              - Build the release app bundle"
 	@echo "  build-notarize     - Build and notarize the app"
 	@echo "  test               - Run tests"
@@ -14,6 +15,10 @@ help:
 	@echo "  update-brew-cask   - Update Homebrew cask formula with latest release"
 	@echo "  publish-brew-cask  - Update and publish cask to tap repository"
 	@echo "  release            - Create a new GitHub release"
+
+# Build and install VoiceFlow to /Applications/
+install:
+	$(SCRIPTS)/install-voiceflow.sh
 
 # Build the app
 build:
@@ -31,7 +36,9 @@ test:
 clean:
 	rm -rf .build
 	rm -rf AudioWhisper.app
+	rm -rf VoiceFlow.app
 	rm -f AudioWhisper.zip
+	rm -f VoiceFlow.zip
 	rm -f Sources/AudioProcessorCLI
 
 # Update the Homebrew cask formula with latest GitHub release
