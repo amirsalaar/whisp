@@ -3,7 +3,7 @@ import os.log
 
 /// Utility to detect Python installations with specific packages
 internal struct PythonDetector {
-    static let logger = Logger(subsystem: "com.audiowhisper.app", category: "PythonDetector")
+    static let logger = Logger(subsystem: "com.voiceflow.app", category: "PythonDetector")
     
     /// Find Python executable with mlx-lm installed
     static func findPythonWithMLX() async -> String? {
@@ -11,22 +11,17 @@ internal struct PythonDetector {
             // uv virtual environment in current directory
             ".venv/bin/python",
             ".venv/bin/python3",
-            
-            // Common uv installation paths
-            FileManager.default.homeDirectoryForCurrentUser.path + "/.venv/bin/python",
-            FileManager.default.homeDirectoryForCurrentUser.path + "/.venv/bin/python3",
-            
-            // pyenv paths
-            FileManager.default.homeDirectoryForCurrentUser.path + "/.pyenv/shims/python",
-            FileManager.default.homeDirectoryForCurrentUser.path + "/.pyenv/shims/python3",
-            
-            // Homebrew Python
+
+            // Homebrew Python (most common for MLX)
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",
-            
+
             // System Python (usually doesn't have mlx-lm)
             "/usr/bin/python3"
         ]
+
+        // Note: Removed home directory scanning (~/.venv, ~/.pyenv) to avoid permission popups
+        // Users can manually select Python location if not found in standard paths
         
         for candidate in candidates {
             if await checkPythonHasMLX(at: candidate) {

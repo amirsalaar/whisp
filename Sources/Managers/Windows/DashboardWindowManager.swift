@@ -46,20 +46,20 @@ internal final class DashboardWindowManager: NSObject {
             defer: false
         )
         
-        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.collectionBehavior = [NSWindow.CollectionBehavior.moveToActiveSpace, NSWindow.CollectionBehavior.fullScreenAuxiliary]
         window.contentViewController = hostingController
-        window.title = "AudioWhisper Dashboard"
+        window.title = "VoiceFlow Dashboard"
         window.setContentSize(initialSize)
         window.minSize = minimumSize
         window.center()
         window.isReleasedWhenClosed = false
-        
+
         windowDelegate = DashboardWindowDelegate(manager: self)
         window.delegate = windowDelegate
-        
+
         dashboardWindow = window
-        
-        window.makeKeyAndOrderFront(nil)
+
+        window.makeKeyAndOrderFront(nil as Any?)
         NSApp.activate(ignoringOtherApps: true)
         
         Logger.app.info("Dashboard window created and shown")

@@ -24,7 +24,7 @@ internal final class MLXModelManager {
     var downloadProgress: [String: String] = [:]
     var totalCacheSize: Int64 = 0
     
-    private let logger = Logger(subsystem: "com.audiowhisper.app", category: "MLXModelManager")
+    private let logger = Logger(subsystem: "com.voiceflow.app", category: "MLXModelManager")
     private let cacheDirectory: URL
 
     static var parakeetRepo: String {
@@ -57,8 +57,15 @@ internal final class MLXModelManager {
     ]
     
     private init() {
-        self.cacheDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/huggingface/hub")
+        // Use Application Support instead of home directory to avoid permission popups
+        if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            self.cacheDirectory = appSupport
+                .appendingPathComponent("VoiceFlow/huggingface-cache", isDirectory: true)
+        } else {
+            // Fallback to temp directory if Application Support unavailable
+            self.cacheDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("huggingface-cache", isDirectory: true)
+        }
         Task {
             await refreshModelList()
         }
@@ -205,12 +212,11 @@ except Exception as e:
 """
         process.arguments = ["-c", pythonScript]
         
-        // Inherit environment and ensure HOME is set for HuggingFace cache
+        // Inherit environment and set HF_HOME to Application Support cache
         var env = ProcessInfo.processInfo.environment
         env["PYTHONUNBUFFERED"] = "1"
-        if env["HOME"] == nil {
-            env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
-        }
+        // Set HuggingFace cache to Application Support instead of home directory
+        env["HF_HOME"] = cacheDirectory.path
         process.environment = env
         
         let outputPipe = Pipe()
@@ -429,12 +435,11 @@ except Exception as e:
 """
         process.arguments = ["-c", pythonScript]
 
-        // Inherit environment and ensure HOME is set for HuggingFace cache
+        // Inherit environment and set HF_HOME to Application Support cache
         var env = ProcessInfo.processInfo.environment
         env["PYTHONUNBUFFERED"] = "1"
-        if env["HOME"] == nil {
-            env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
-        }
+        // Set HuggingFace cache to Application Support instead of home directory
+        env["HF_HOME"] = cacheDirectory.path
         process.environment = env
 
         let outputPipe = Pipe()

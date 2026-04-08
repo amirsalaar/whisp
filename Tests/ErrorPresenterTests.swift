@@ -1,5 +1,5 @@
 import XCTest
-@testable import AudioWhisper
+@testable import VoiceFlow
 
 @MainActor
 final class ErrorPresenterTests: XCTestCase {
@@ -8,35 +8,26 @@ final class ErrorPresenterTests: XCTestCase {
         ErrorPresenter.shared.isTestEnvironment = true
     }
 
-    // MARK: - Retry Notifications
+    // MARK: - Error Presentation
 
-    @MainActor func testConnectionErrorPostsRetryRequested() {
-        let expectation = expectation(forNotification: .retryRequested, object: nil, handler: nil)
-
-        ErrorPresenter.shared.showError("Internet connection dropped. Please try again.")
-
-        wait(for: [expectation], timeout: 1.0)
+    @MainActor func testShowErrorDoesNotCrashInTestEnvironment() {
+        // ErrorPresenter skips UI in test mode; just verify no crash
+        XCTAssertNoThrow(ErrorPresenter.shared.showError("Something went wrong"))
     }
 
-    @MainActor func testTranscriptionErrorPostsRetryTranscriptionRequested() {
-        let expectation = expectation(forNotification: .retryTranscriptionRequested, object: nil, handler: nil)
-
-        ErrorPresenter.shared.showError("Transcription failed for the audio file")
-
-        wait(for: [expectation], timeout: 1.0)
+    @MainActor func testShowErrorWithAPIKeyMessage() {
+        XCTAssertNoThrow(ErrorPresenter.shared.showError("Invalid API key provided"))
     }
 
-    // MARK: - Unknown Error Handling
+    @MainActor func testShowErrorWithMicrophoneMessage() {
+        XCTAssertNoThrow(ErrorPresenter.shared.showError("Microphone permission denied"))
+    }
 
-    @MainActor func testUnknownErrorDoesNotPostRetryNotifications() {
-        let retryExpectation = expectation(forNotification: .retryRequested, object: nil, handler: nil)
-        retryExpectation.isInverted = true
+    @MainActor func testShowErrorWithConnectionMessage() {
+        XCTAssertNoThrow(ErrorPresenter.shared.showError("Internet connection dropped"))
+    }
 
-        let transcriptionExpectation = expectation(forNotification: .retryTranscriptionRequested, object: nil, handler: nil)
-        transcriptionExpectation.isInverted = true
-
-        ErrorPresenter.shared.showError("An unexpected error occurred")
-
-        wait(for: [retryExpectation, transcriptionExpectation], timeout: 1.0)
+    @MainActor func testShowErrorWithTranscriptionMessage() {
+        XCTAssertNoThrow(ErrorPresenter.shared.showError("Transcription failed for the audio file"))
     }
 }

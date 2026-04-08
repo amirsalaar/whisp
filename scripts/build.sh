@@ -32,7 +32,7 @@ BUILD_DATE=$(date '+%Y-%m-%d')
 DEFAULT_VERSION=$(cat VERSION | tr -d '[:space:]')
 VERSION="${AUDIO_WHISPER_VERSION:-$DEFAULT_VERSION}"
 
-echo "🎙️ Building AudioWhisper version $VERSION..."
+echo "🎙️ Building VoiceFlow version $VERSION..."
 
 # Update Info.plist with current version
 if [ -f "Info.plist" ]; then
@@ -49,7 +49,7 @@ fi
 
 # Clean previous builds
 rm -rf .build/release
-rm -rf AudioWhisper.app
+rm -rf VoiceFlow.app
 rm -f Sources/AudioProcessorCLI
 
 # Create version file from template
@@ -78,7 +78,7 @@ struct VersionInfo {
     }
     
     static var fullVersionInfo: String {
-        var info = "AudioWhisper \(version)"
+        var info = "VoiceFlow \(version)"
         if gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
             info += " • \(shortHash)"
@@ -97,39 +97,39 @@ echo "📦 Building for release..."
 swift build -c release --arch arm64 --arch x86_64
 
 # Check for the actual binary instead of exit code (swift-collections emits spurious errors)
-if [ ! -f ".build/apple/Products/Release/AudioWhisper" ]; then
+if [ ! -f ".build/apple/Products/Release/VoiceFlow" ]; then
   echo "❌ Build failed - binary not found!"
   exit 1
 fi
 
 # Create app bundle
 echo "Creating app bundle..."
-mkdir -p AudioWhisper.app/Contents/MacOS
-mkdir -p AudioWhisper.app/Contents/Resources
-mkdir -p AudioWhisper.app/Contents/Resources/bin
+mkdir -p VoiceFlow.app/Contents/MacOS
+mkdir -p VoiceFlow.app/Contents/Resources
+mkdir -p VoiceFlow.app/Contents/Resources/bin
 
 # Set build number for Info.plist
 BUILD_NUMBER="${VERSION//./}"
 
 # Copy executable (universal binary)
-cp .build/apple/Products/Release/AudioWhisper AudioWhisper.app/Contents/MacOS/
+cp .build/apple/Products/Release/VoiceFlow VoiceFlow.app/Contents/MacOS/
 
 # Copy dashboard logo
 if [ -f "Sources/Resources/DashboardLogo.jpg" ]; then
-  cp Sources/Resources/DashboardLogo.jpg AudioWhisper.app/Contents/Resources/
+  cp Sources/Resources/DashboardLogo.jpg VoiceFlow.app/Contents/Resources/
   echo "Copied dashboard logo"
 fi
 
 # Copy Python scripts for Parakeet and MLX support
 if [ -f "Sources/parakeet_transcribe_pcm.py" ]; then
-  cp Sources/parakeet_transcribe_pcm.py AudioWhisper.app/Contents/Resources/
+  cp Sources/parakeet_transcribe_pcm.py VoiceFlow.app/Contents/Resources/
   echo "Copied Parakeet PCM Python script"
 else
   echo "⚠️ parakeet_transcribe_pcm.py not found, Parakeet functionality will not work"
 fi
 
 if [ -f "Sources/mlx_semantic_correct.py" ]; then
-  cp Sources/mlx_semantic_correct.py AudioWhisper.app/Contents/Resources/
+  cp Sources/mlx_semantic_correct.py VoiceFlow.app/Contents/Resources/
   echo "Copied MLX semantic correction Python script"
 else
   echo "⚠️ mlx_semantic_correct.py not found, MLX semantic correction will not work"
@@ -137,21 +137,21 @@ fi
 
 # Copy verify scripts
 if [ -f "Sources/verify_parakeet.py" ]; then
-  cp Sources/verify_parakeet.py AudioWhisper.app/Contents/Resources/
+  cp Sources/verify_parakeet.py VoiceFlow.app/Contents/Resources/
 fi
 if [ -f "Sources/verify_mlx.py" ]; then
-  cp Sources/verify_mlx.py AudioWhisper.app/Contents/Resources/
+  cp Sources/verify_mlx.py VoiceFlow.app/Contents/Resources/
 fi
 
 # Copy ML daemon entrypoint and package
 if [ -f "Sources/ml_daemon.py" ]; then
-  cp Sources/ml_daemon.py AudioWhisper.app/Contents/Resources/
+  cp Sources/ml_daemon.py VoiceFlow.app/Contents/Resources/
   echo "Copied ML daemon entrypoint"
 fi
 if [ -d "Sources/ml" ]; then
-  cp -R Sources/ml AudioWhisper.app/Contents/Resources/
+  cp -R Sources/ml VoiceFlow.app/Contents/Resources/
   # Remove __pycache__ directories
-  find AudioWhisper.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+  find VoiceFlow.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
   echo "Copied ml package"
 else
   echo "⚠️ Sources/ml package not found, ML daemon will not work"
@@ -159,14 +159,14 @@ fi
 
 # Bundle uv (Apple Silicon). Prefer repo copy; else fall back to system uv if available
 if [ -f "Sources/Resources/bin/uv" ]; then
-  cp Sources/Resources/bin/uv AudioWhisper.app/Contents/Resources/bin/uv
-  chmod +x AudioWhisper.app/Contents/Resources/bin/uv
+  cp Sources/Resources/bin/uv VoiceFlow.app/Contents/Resources/bin/uv
+  chmod +x VoiceFlow.app/Contents/Resources/bin/uv
   echo "Bundled uv binary (from repo)"
 else
   if command -v uv >/dev/null 2>&1; then
     UV_PATH=$(command -v uv)
-    cp "$UV_PATH" AudioWhisper.app/Contents/Resources/bin/uv
-    chmod +x AudioWhisper.app/Contents/Resources/bin/uv
+    cp "$UV_PATH" VoiceFlow.app/Contents/Resources/bin/uv
+    chmod +x VoiceFlow.app/Contents/Resources/bin/uv
     echo "Bundled uv binary (from system: $UV_PATH)"
   else
     echo "ℹ️ No bundled uv found and no system uv available; runtime will try PATH"
@@ -175,7 +175,7 @@ fi
 
 # Bundle pyproject.toml and uv.lock if present
 if [ -f "Sources/Resources/pyproject.toml" ]; then
-  cp Sources/Resources/pyproject.toml AudioWhisper.app/Contents/Resources/pyproject.toml
+  cp Sources/Resources/pyproject.toml VoiceFlow.app/Contents/Resources/pyproject.toml
   echo "Bundled pyproject.toml"
 else
   echo "ℹ️ No pyproject.toml found in Sources/Resources"
@@ -185,7 +185,7 @@ fi
 
 # Create proper Info.plist
 echo "Creating Info.plist..."
-cat >AudioWhisper.app/Contents/Info.plist <<EOF
+cat >VoiceFlow.app/Contents/Info.plist <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -193,13 +193,13 @@ cat >AudioWhisper.app/Contents/Info.plist <<EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>AudioWhisper</string>
+    <string>VoiceFlow</string>
     <key>CFBundleIdentifier</key>
-    <string>com.audiowhisper.app</string>
+    <string>com.voiceflow.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>AudioWhisper</string>
+    <string>VoiceFlow</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -209,7 +209,7 @@ cat >AudioWhisper.app/Contents/Info.plist <<EOF
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>AudioWhisper needs access to your microphone to record audio for transcription.</string>
+    <string>VoiceFlow needs access to your microphone to record audio for transcription.</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -245,7 +245,7 @@ if [ -f "AudioWhisperIcon.png" ]; then
 
   # Create proper icns file directly in app bundle
   if command -v iconutil >/dev/null 2>&1; then
-    iconutil -c icns AudioWhisper.iconset -o AudioWhisper.app/Contents/Resources/AppIcon.icns 2>/dev/null || echo "Note: iconutil failed, app will use default icon"
+    iconutil -c icns AudioWhisper.iconset -o VoiceFlow.app/Contents/Resources/AppIcon.icns 2>/dev/null || echo "Note: iconutil failed, app will use default icon"
   fi
 
   # Clean up temporary files
@@ -256,11 +256,11 @@ else
 fi
 
 # Make executable
-chmod +x AudioWhisper.app/Contents/MacOS/AudioWhisper
+chmod +x VoiceFlow.app/Contents/MacOS/VoiceFlow
 
 # Create entitlements file for hardened runtime
 echo "Creating entitlements for hardened runtime..."
-cat >AudioWhisper.entitlements <<'EOF'
+cat >VoiceFlow.entitlements <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -285,14 +285,14 @@ sign_app() {
   fi
 
   # Sign uv binary if present (nested executable)
-  if [ -f "AudioWhisper.app/Contents/Resources/bin/uv" ]; then
-    codesign --force --sign "$identity" --options runtime --entitlements AudioWhisper.entitlements AudioWhisper.app/Contents/Resources/bin/uv
+  if [ -f "VoiceFlow.app/Contents/Resources/bin/uv" ]; then
+    codesign --force --sign "$identity" --options runtime --entitlements VoiceFlow.entitlements VoiceFlow.app/Contents/Resources/bin/uv
   fi
 
-  codesign --force --deep --sign "$identity" --options runtime --entitlements AudioWhisper.entitlements AudioWhisper.app
+  codesign --force --deep --sign "$identity" --options runtime --entitlements VoiceFlow.entitlements VoiceFlow.app
   if [ $? -eq 0 ]; then
     echo "🔍 Verifying signature..."
-    codesign --verify --verbose AudioWhisper.app
+    codesign --verify --verbose VoiceFlow.app
     echo "✅ App signed successfully"
     return 0
   else
@@ -326,7 +326,7 @@ else
 fi
 
 # Clean up entitlements file
-rm -f AudioWhisper.entitlements
+rm -f VoiceFlow.entitlements
 
 # Notarization (requires code signing first)
 if [ "$NOTARIZE" = true ]; then
@@ -349,7 +349,7 @@ if [ "$NOTARIZE" = true ]; then
   fi
 
   # Check if app is signed
-  if codesign -dvvv AudioWhisper.app 2>&1 | grep -q "Signature=adhoc"; then
+  if codesign -dvvv VoiceFlow.app 2>&1 | grep -q "Signature=adhoc"; then
     echo "❌ App must be properly signed before notarization (not adhoc signed)"
     echo "Please ensure CODE_SIGN_IDENTITY is set or a Developer ID is available"
     exit 1
@@ -357,11 +357,11 @@ if [ "$NOTARIZE" = true ]; then
 
   # Create a zip file for notarization
   echo "Creating zip for notarization..."
-  ditto -c -k --keepParent AudioWhisper.app AudioWhisper.zip
+  ditto -c -k --keepParent VoiceFlow.app VoiceFlow.zip
 
   # Submit for notarization
   echo "📤 Submitting to Apple for notarization..."
-  xcrun notarytool submit AudioWhisper.zip \
+  xcrun notarytool submit VoiceFlow.zip \
     --apple-id "$AUDIO_WHISPER_APPLE_ID" \
     --password "$AUDIO_WHISPER_APPLE_PASSWORD" \
     --team-id "$AUDIO_WHISPER_TEAM_ID" \
@@ -371,7 +371,7 @@ if [ "$NOTARIZE" = true ]; then
   if grep -q "status: Accepted" notarization.log; then
     # Staple the notarization ticket to the app
     echo "📎 Stapling notarization ticket..."
-    xcrun stapler staple AudioWhisper.app
+    xcrun stapler staple VoiceFlow.app
 
     if [ $? -eq 0 ]; then
       echo "✅ Notarization ticket stapled successfully!"
@@ -389,10 +389,10 @@ if [ "$NOTARIZE" = true ]; then
   fi
 
   # Clean up
-  rm -f AudioWhisper.zip
+  rm -f VoiceFlow.zip
   rm -f notarization.log
 fi
 
 echo "✅ Build complete!"
 echo ""
-open -R AudioWhisper.app
+open -R VoiceFlow.app

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import AudioWhisper
+@testable import VoiceFlow
 
 final class UvBootstrapTests: XCTestCase {
     private var originalHome: String?
@@ -64,7 +64,7 @@ final class UvBootstrapTests: XCTestCase {
 
     func testFindUvFallsBackToUserToolsDirectory() throws {
         // No uv on PATH; add one under Application Support/AudioWhisper/bin/uv
-        let toolsDir = tempAppSupport.appendingPathComponent("AudioWhisper/bin", isDirectory: true)
+        let toolsDir = tempAppSupport.appendingPathComponent("VoiceFlow/bin", isDirectory: true)
         try FileManager.default.createDirectory(at: toolsDir, withIntermediateDirectories: true)
 
         let uvURL = toolsDir.appendingPathComponent("uv")

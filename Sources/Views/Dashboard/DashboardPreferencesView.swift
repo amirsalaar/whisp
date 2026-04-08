@@ -4,24 +4,14 @@ import os.log
 
 internal struct DashboardPreferencesView: View {
     @AppStorage("startAtLogin") private var startAtLogin = true
-    @AppStorage("immediateRecording") private var immediateRecording = false
     @AppStorage("autoBoostMicrophoneVolume") private var autoBoostMicrophoneVolume = false
-    @AppStorage("enableSmartPaste") private var enableSmartPaste = false
+    @AppStorage("enableSmartPaste") private var enableSmartPaste = true
     @AppStorage("playCompletionSound") private var playCompletionSound = true
-    @AppStorage("transcriptionHistoryEnabled") private var transcriptionHistoryEnabled = false
-    @AppStorage("transcriptionRetentionPeriod") private var transcriptionRetentionPeriodRaw = RetentionPeriod.oneMonth.rawValue
     @AppStorage("maxModelStorageGB") private var maxModelStorageGB = 5.0
 
     @State private var loginItemError: String?
 
     private let storageOptions: [Double] = [1, 2, 5, 10, 20]
-
-    private var retentionBinding: Binding<RetentionPeriod> {
-        Binding(
-            get: { RetentionPeriod(rawValue: transcriptionRetentionPeriodRaw) ?? .oneMonth },
-            set: { transcriptionRetentionPeriodRaw = $0.rawValue }
-        )
-    }
 
     var body: some View {
         Form {
@@ -29,22 +19,13 @@ internal struct DashboardPreferencesView: View {
                 Toggle(isOn: $startAtLogin) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Start at Login")
-                        Text("Launch AudioWhisper when you sign in.")
+                        Text("Launch VoiceFlow when you sign in.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .onChange(of: startAtLogin) { _, newValue in
                     updateLoginItem(enabled: newValue)
-                }
-
-                Toggle(isOn: $immediateRecording) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Express Mode")
-                        Text("Hotkey immediately starts and stops recording.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
                 Toggle(isOn: $autoBoostMicrophoneVolume) {
@@ -78,30 +59,6 @@ internal struct DashboardPreferencesView: View {
                     Text(loginItemError)
                         .foregroundStyle(Color(nsColor: .systemRed))
                 }
-            }
-
-            Section {
-                Toggle(isOn: $transcriptionHistoryEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Save Transcription History")
-                        Text("Store transcripts locally so you can search and review them later.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if transcriptionHistoryEnabled {
-                    Picker("Retention Period", selection: retentionBinding) {
-                        ForEach(RetentionPeriod.allCases, id: \.rawValue) { period in
-                            Text(period.displayName).tag(period)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-            } header: {
-                Text("History")
-            } footer: {
-                Text("View saved transcripts in the Transcripts section in the sidebar.")
             }
 
             Section("Storage") {

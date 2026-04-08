@@ -78,25 +78,28 @@ internal enum DashboardTheme {
 
 // MARK: - Navigation Item
 internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
-    case dashboard = "Overview"
-    case transcripts = "Transcripts"
-    case categories = "Categories"
-    case recording = "Recording"
-    case providers = "Providers"
-    case preferences = "Preferences"
+    case providers = "Transcription"
+    case recording = "Hotkeys"
+    case preferences = "General"
     case permissions = "Permissions"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .dashboard: return "square.text.square"
-        case .transcripts: return "doc.text"
-        case .categories: return "folder"
-        case .recording: return "waveform"
-        case .providers: return "cloud"
-        case .preferences: return "slider.horizontal.3"
-        case .permissions: return "lock"
+        case .providers: return "waveform.circle"
+        case .recording: return "keyboard"
+        case .preferences: return "gearshape"
+        case .permissions: return "lock.shield"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .providers: return "Transcription provider and model settings"
+        case .recording: return "Configure keyboard shortcuts"
+        case .preferences: return "App behavior and preferences"
+        case .permissions: return "Required system permissions"
         }
     }
 }
@@ -111,20 +114,57 @@ internal struct DashboardView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(DashboardNavItem.allCases, selection: $selectionModel.selectedNav) { item in
-                Label(item.rawValue, systemImage: item.icon)
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("VoiceFlow")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text("Settings")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+
+                Divider()
+
+                // Navigation items
+                List(DashboardNavItem.allCases, selection: $selectionModel.selectedNav) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(item.rawValue, systemImage: item.icon)
+                            .font(.system(size: 14, weight: .medium))
+                        Text(item.description)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 24)
+                    }
+                    .padding(.vertical, 4)
                     .tag(item)
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.sidebar)
-            // Remove the built-in sidebar toggle to keep the titlebar clean.
             .toolbar(removing: .sidebarToggle)
+            .frame(minWidth: 220)
         } detail: {
             if let selectedNav = selectionModel.selectedNav {
                 detailView(for: selectedNav)
                     .navigationTitle(selectedNav.rawValue)
-            } else {
-                Text("Select a section in the sidebar")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "gearshape.2")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("Select a section")
+                        .font(.headline)
+                    Text("Choose a settings category from the sidebar")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -132,16 +172,10 @@ internal struct DashboardView: View {
     @ViewBuilder
     private func detailView(for item: DashboardNavItem) -> some View {
         switch item {
-        case .dashboard:
-            DashboardHomeView(selectedNav: Binding(get: { selectionModel.selectedNav ?? .dashboard }, set: { selectionModel.selectedNav = $0 }))
-        case .transcripts:
-            DashboardTranscriptsView()
-        case .categories:
-            DashboardCategoriesView()
-        case .recording:
-            DashboardRecordingView()
         case .providers:
             DashboardProvidersView()
+        case .recording:
+            DashboardRecordingView()
         case .preferences:
             DashboardPreferencesView()
         case .permissions:

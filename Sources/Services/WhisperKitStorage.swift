@@ -11,8 +11,8 @@ internal enum WhisperKitStorage {
     ]
 
     private static func baseDirectory(fileManager: FileManager = .default) -> URL? {
-        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml", isDirectory: true)
+        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("VoiceFlow/huggingface/models/argmaxinc/whisperkit-coreml", isDirectory: true)
     }
 
     static func storageDirectory(fileManager: FileManager = .default) -> URL? {

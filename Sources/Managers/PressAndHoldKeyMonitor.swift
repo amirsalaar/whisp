@@ -149,13 +149,13 @@ internal final class PressAndHoldKeyMonitor {
     private var flagsMonitor: Any?
     private var keyDownMonitor: Any?
     private var keyUpMonitor: Any?
-    private let monitorQueue = DispatchQueue(label: "com.audiowhisper.pressAndHoldMonitor")
+    private let monitorQueue = DispatchQueue(label: "com.voiceflow.pressAndHoldMonitor")
 
     private var isPressed = false
 
     // Stuck state recovery: if key remains "pressed" for too long, auto-release
     private var stuckStateTimeoutTask: Task<Void, Never>?
-    private let stuckStateTimeout: TimeInterval = 10.0  // 10 seconds max hold time
+    private let stuckStateTimeout: TimeInterval = 120.0  // 2 minutes max hold time
 
     init(
         configuration: PressAndHoldConfiguration,

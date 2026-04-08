@@ -35,11 +35,59 @@ internal class SpeechToTextService {
     private let parakeetService = ParakeetService()
     private let keychainService: KeychainServiceProtocol
     private let correctionService = SemanticCorrectionService()
-    
+
     init(keychainService: KeychainServiceProtocol = KeychainService.shared) {
         self.keychainService = keychainService
     }
-    
+
+    // MARK: - Retry Logic
+
+    /// Retry a network operation with exponential backoff
+    private func withRetry<T>(
+        maxAttempts: Int = 3,
+        operation: @escaping () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+
+        for attempt in 1...maxAttempts {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                Logger.speechToText.warning("Attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")
+
+                if attempt < maxAttempts {
+                    // Exponential backoff: 1s, 2s, 4s
+                    let delay = pow(2.0, Double(attempt - 1))
+                    Logger.speechToText.info("Retrying in \(delay)s...")
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+            }
+        }
+
+        throw lastError ?? SpeechToTextError.transcriptionFailed("Unknown error after \(maxAttempts) attempts")
+    }
+
+    /// Add timeout protection to prevent API calls from hanging forever
+    private func withTimeout<T>(
+        _ duration: Duration,
+        operation: @escaping () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(for: duration)
+                throw SpeechToTextError.transcriptionFailed("Request timed out after \(duration.components.seconds)s")
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
     // Raw transcription without semantic correction
     func transcribeRaw(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws -> String {
         // Validate audio file before processing
@@ -87,16 +135,26 @@ internal class SpeechToTextService {
         
         switch provider {
         case .openai:
-            let text = try await transcribeWithOpenAI(audioURL: audioURL)
+            let text = try await withTimeout(.seconds(30)) {
+                try await self.withRetry {
+                    try await self.transcribeWithOpenAI(audioURL: audioURL)
+                }
+            }
             return await correctionService.correct(text: text, providerUsed: .openai)
         case .gemini:
-            let text = try await transcribeWithGemini(audioURL: audioURL)
+            let text = try await withTimeout(.seconds(30)) {
+                try await self.withRetry {
+                    try await self.transcribeWithGemini(audioURL: audioURL)
+                }
+            }
             return await correctionService.correct(text: text, providerUsed: .gemini)
         case .local:
             guard let model = model else {
                 throw SpeechToTextError.transcriptionFailed("Whisper model required for local transcription")
             }
-            let text = try await transcribeWithLocal(audioURL: audioURL, model: model)
+            let text = try await withTimeout(.seconds(60)) {
+                try await self.transcribeWithLocal(audioURL: audioURL, model: model)
+            }
             return await correctionService.correct(text: text, providerUsed: .local)
         case .parakeet:
             let text = try await transcribeWithParakeet(audioURL: audioURL)
@@ -139,7 +197,7 @@ internal class SpeechToTextService {
 
     private func transcribeWithOpenAI(audioURL: URL) async throws -> String {
         // Get API key from keychain
-        guard let apiKey = keychainService.getQuietly(service: "AudioWhisper", account: "OpenAI") else {
+        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "OpenAI") else {
             throw SpeechToTextError.apiKeyMissing("OpenAI")
         }
 
@@ -177,7 +235,7 @@ internal class SpeechToTextService {
     
     private func transcribeWithGemini(audioURL: URL) async throws -> String {
         // Get API key from keychain
-        guard let apiKey = keychainService.getQuietly(service: "AudioWhisper", account: "Gemini") else {
+        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "Gemini") else {
             throw SpeechToTextError.apiKeyMissing("Gemini")
         }
         
@@ -321,8 +379,7 @@ internal class SpeechToTextService {
     
     private func transcribeWithLocal(audioURL: URL, model: WhisperModel) async throws -> String {
         do {
-            let text = try await localWhisperService.transcribe(audioFileURL: audioURL, model: model) { progress in
-                NotificationCenter.default.post(name: .transcriptionProgress, object: progress)
+            let text = try await localWhisperService.transcribe(audioFileURL: audioURL, model: model) { _ in
             }
             return Self.cleanTranscriptionText(text)
         } catch {

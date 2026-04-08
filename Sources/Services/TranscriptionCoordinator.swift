@@ -1,6 +1,53 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 import os.log
+
+/// Saves and restores full clipboard contents (rich text, images, files — not just plain strings).
+private struct ClipboardSnapshot {
+    private let items: [[(NSPasteboard.PasteboardType, Data)]]
+
+    private init(items: [[(NSPasteboard.PasteboardType, Data)]]) {
+        self.items = items
+    }
+
+    static func capture() -> ClipboardSnapshot {
+        let pasteboard = NSPasteboard.general
+        var snapshot: [[(NSPasteboard.PasteboardType, Data)]] = []
+
+        for item in pasteboard.pasteboardItems ?? [] {
+            var typeData: [(NSPasteboard.PasteboardType, Data)] = []
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    typeData.append((type, data))
+                }
+            }
+            if !typeData.isEmpty {
+                snapshot.append(typeData)
+            }
+        }
+
+        return ClipboardSnapshot(items: snapshot)
+    }
+
+    func restore() {
+        guard !items.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        var pasteboardItems: [NSPasteboardItem] = []
+        for itemData in items {
+            let item = NSPasteboardItem()
+            for (type, data) in itemData {
+                item.setData(data, forType: type)
+            }
+            pasteboardItems.append(item)
+        }
+
+        pasteboard.writeObjects(pasteboardItems)
+    }
+}
 
 /// Coordinates transcription processing independently of UI.
 /// Handles audio transcription, semantic correction, history saving, and smart paste.
@@ -38,6 +85,11 @@ internal final class TranscriptionCoordinator {
         sourceAppInfo: SourceAppInfo? = nil,
         shouldPaste: Bool = true
     ) async throws -> String {
+        // Ensure temp file cleanup on all exit paths (success or error)
+        defer {
+            try? FileManager.default.removeItem(at: audioURL)
+        }
+
         progressHandler?("Preparing audio...")
 
         // Get provider from UserDefaults if not specified
@@ -99,6 +151,9 @@ internal final class TranscriptionCoordinator {
         let wordCount = UsageMetricsStore.estimatedWordCount(for: finalText)
         let characterCount = finalText.count
 
+        // Save current clipboard contents for restoration after paste
+        let savedClipboard = ClipboardSnapshot.capture()
+
         // Copy to clipboard
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(finalText, forType: .string)
@@ -118,12 +173,24 @@ internal final class TranscriptionCoordinator {
         recordSourceUsage(words: wordCount, characters: characterCount, sourceInfo: sourceAppInfo)
 
         // Auto-paste if enabled and requested
+        var didPaste = false
         if shouldPaste {
             let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
             if enableSmartPaste {
                 try? await Task.sleep(for: .milliseconds(100))
-                pasteManager.pasteToActiveApp()
+                didPaste = pasteManager.pasteToActiveApp()
+
+                if !didPaste {
+                    // Paste failed (accessibility denied, etc.) — notify user
+                    await showPasteFailureNotification()
+                }
             }
+        }
+
+        // Restore previous clipboard after paste has had time to complete
+        if didPaste {
+            try? await Task.sleep(for: .milliseconds(500))
+            savedClipboard.restore()
         }
 
         Logger.app.info("Transcription completed: \(wordCount) words, \(characterCount) characters")
@@ -217,6 +284,21 @@ internal final class TranscriptionCoordinator {
         }
 
         return SourceAppInfo.unknown
+    }
+
+    private func showPasteFailureNotification() async {
+        let content = UNMutableNotificationContent()
+        content.title = "Paste Failed"
+        content.body = "Text copied to clipboard — press ⌘V to paste"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "paste-failed-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     private func recordSourceUsage(words: Int, characters: Int, sourceInfo: SourceAppInfo?) {

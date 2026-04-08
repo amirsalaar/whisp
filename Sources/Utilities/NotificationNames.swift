@@ -1,41 +1,14 @@
 import Foundation
 
 // MARK: - Typed Notification Names
-// This file provides type-safe notification names to avoid typos and improve code completion
 
 internal extension Notification.Name {
     // MARK: - Settings and Configuration
     static let updateGlobalHotkey = Notification.Name("UpdateGlobalHotkey")
-    
-    // MARK: - Welcome Flow
-    static let welcomeCompleted = Notification.Name("WelcomeCompleted")
-    
+    static let pressAndHoldSettingsChanged = Notification.Name("PressAndHoldSettingsChanged")
+
     // MARK: - Recording Events
-    static let recordingStartFailed = Notification.Name("RecordingStartFailed")
     static let recordingStopped = Notification.Name("RecordingStopped")
-    static let targetAppStored = Notification.Name("TargetAppStored")
-    static let transcriptionProgress = Notification.Name("TranscriptionProgress")
     static let transcriptionStarted = Notification.Name("TranscriptionStarted")
     static let transcriptionCompleted = Notification.Name("TranscriptionCompleted")
-    
-    // MARK: - Window Management
-    static let restoreFocusToPreviousApp = Notification.Name("RestoreFocusToPreviousApp")
-    
-    // MARK: - Keyboard Events
-    static let spaceKeyPressed = Notification.Name("SpaceKeyPressed")
-    static let escapeKeyPressed = Notification.Name("EscapeKeyPressed")
-    static let returnKeyPressed = Notification.Name("ReturnKeyPressed")
-    static let pressAndHoldSettingsChanged = Notification.Name("PressAndHoldSettingsChanged")
-    
-    // MARK: - Error Handling and Retry
-    static let retryRequested = Notification.Name("RetryRequested")
-    static let retryTranscriptionRequested = Notification.Name("RetryTranscriptionRequested")
-    static let showAudioFileRequested = Notification.Name("ShowAudioFileRequested")
-
-    // MARK: - File Transcription
-    static let transcribeAudioFile = Notification.Name("TranscribeAudioFile")
-    
-    // MARK: - Paste Operations
-    static let pasteOperationFailed = Notification.Name("PasteOperationFailed")
-    static let pasteOperationSucceeded = Notification.Name("PasteOperationSucceeded")
 }

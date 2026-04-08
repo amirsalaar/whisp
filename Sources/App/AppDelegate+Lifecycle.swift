@@ -25,20 +25,25 @@ internal extension AppDelegate {
 
         AppSetupHelper.setupApp()
 
+        // Check permissions at startup
+        PermissionChecker.checkAndPromptForPermissions()
+
         audioRecorder = AudioRecorder()
+
+        // Pre-load services to eliminate first-use slowness
+        Task {
+            await preloadServices()
+        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             button.image = AppSetupHelper.createMenuBarIcon()
-            button.action = #selector(toggleRecordWindow)
-            button.target = self
         }
         statusItem?.menu = makeStatusMenu()
 
         hotKeyManager = HotKeyManager { [weak self] in
             self?.handleHotkey(source: .standardHotkey)
         }
-        keyboardEventHandler = KeyboardEventHandler()
         configureShortcutMonitors()
 
         NotificationCenter.default.addObserver(
@@ -49,12 +54,6 @@ internal extension AppDelegate {
         )
 
         setupNotificationObservers()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if AppSetupHelper.checkFirstRun() {
-                self.showWelcomeAndSettings()
-            }
-        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -65,20 +64,43 @@ internal extension AppDelegate {
         Task { await MLDaemonManager.shared.shutdown() }
         recordingAnimationTimer?.cancel()
         recordingAnimationTimer = nil
-
-        recordingWindow = nil
-        recordingWindowDelegate = nil
     }
 
     func hasAPIKey(service: String, account: String) -> Bool {
         KeychainService.shared.getQuietly(service: service, account: account) != nil
     }
 
-    func showWelcomeAndSettings() {
-        let shouldOpenSettings = WelcomeWindow.showWelcomeDialog()
+    /// Pre-load services to eliminate first-use slowness
+    private func preloadServices() async {
+        let provider = UserDefaults.standard.string(forKey: AppDefaults.Keys.transcriptionProvider)
+            .flatMap { TranscriptionProvider(rawValue: $0) } ?? AppDefaults.defaultTranscriptionProvider
 
-        if shouldOpenSettings {
-            DashboardWindowManager.shared.showDashboardWindow()
+        // Pre-load WhisperKit model if using local provider
+        if provider == .local {
+            let selectedModel = UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedWhisperModel)
+                .flatMap { WhisperModel(rawValue: $0) } ?? AppDefaults.defaultWhisperModel
+
+            if WhisperKitStorage.isModelDownloaded(selectedModel) {
+                do {
+                    Logger.app.info("Pre-loading WhisperKit model: \(selectedModel.displayName)...")
+                    try await LocalWhisperService.shared.preloadModel(selectedModel) { progress in
+                        Logger.app.debug("Pre-loading: \(progress)")
+                    }
+                    Logger.app.info("WhisperKit model pre-loaded successfully")
+                } catch {
+                    Logger.app.error("Failed to pre-load WhisperKit model: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // Warm up ML daemon if semantic correction is enabled
+        let semanticMode = UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionMode)
+            .flatMap { SemanticCorrectionMode(rawValue: $0) } ?? .off
+
+        if semanticMode != .off {
+            Logger.app.info("Warming up ML daemon...")
+            _ = await MLDaemonManager.shared.ping()
+            Logger.app.info("ML daemon ready")
         }
     }
 }

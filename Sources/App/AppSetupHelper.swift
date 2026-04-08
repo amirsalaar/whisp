@@ -28,11 +28,14 @@ internal class AppSetupHelper {
         return NSClassFromString("XCTestCase") != nil
     }
     
-    static func createMenuBarIcon() -> NSImage {
+    static func createMenuBarIcon(isRecording: Bool = false) -> NSImage {
         let iconSize = getAdaptiveMenuBarIconSize()
         let config = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
-        let image = NSImage(systemSymbolName: "microphone.circle", accessibilityDescription: LocalizedStrings.Accessibility.microphoneIcon)?.withSymbolConfiguration(config)
-        image?.isTemplate = true // This makes it adapt to menu bar appearance
+
+        // Use different icons for recording vs idle state
+        let symbolName = isRecording ? "mic.circle.fill" : "mic.circle"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: LocalizedStrings.Accessibility.microphoneIcon)?.withSymbolConfiguration(config)
+        image?.isTemplate = true // This makes it adapt to menu bar appearance (dark/light mode)
         return image ?? NSImage()
     }
     
@@ -160,7 +163,7 @@ internal class AppSetupHelper {
                 in: .userDomainMask,
                 appropriateFor: nil,
                 create: true
-            ).appendingPathComponent("AudioWhisper/prompts", isDirectory: true)
+            ).appendingPathComponent("VoiceFlow/prompts", isDirectory: true)
             if !FileManager.default.fileExists(atPath: base.path) {
                 try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
             }

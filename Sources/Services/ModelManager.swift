@@ -314,11 +314,11 @@ internal class ModelManager {
     }
     
     private nonisolated func getAvailableStorageSpace() async throws -> Int64 {
-        guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        guard let appSupportPath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw ModelError.applicationSupportDirectoryNotFound
         }
-        
-        let resourceValues = try documentsPath.resourceValues(forKeys: [.volumeAvailableCapacityKey])
+
+        let resourceValues = try appSupportPath.resourceValues(forKeys: [.volumeAvailableCapacityKey])
         return Int64(resourceValues.volumeAvailableCapacity ?? 0)
     }
     

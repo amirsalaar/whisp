@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import WhisperKit
 import AVFoundation
+import AppKit
 
 // Actor to manage WhisperKit instances safely across concurrency boundaries
 private actor WhisperKitCache {
@@ -28,17 +29,15 @@ private actor WhisperKitCache {
         setenv("TRANSFORMERS_OFFLINE", "1", 1)
         setenv("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1", 1)
 
-        // Try to use local model path if available
+        // Always use explicit local model path to avoid WhisperKit checking default locations (like ~/Documents)
+        guard let localModelPath = getLocalModelPath(for: model) else {
+            throw LocalWhisperError.modelNotDownloaded
+        }
+
         let newInstance: WhisperKit
         do {
-            if let localModelPath = getLocalModelPath(for: model) {
-                let config = WhisperKitConfig(modelFolder: localModelPath)
-                newInstance = try await WhisperKit(config)
-            } else {
-                // Fallback to model name (should work if environment variables are respected)
-                let config = WhisperKitConfig(model: modelName)
-                newInstance = try await WhisperKit(config)
-            }
+            let config = WhisperKitConfig(modelFolder: localModelPath)
+            newInstance = try await WhisperKit(config)
         } catch {
             // If WhisperKit fails due to network issues, provide a more helpful error
             if error.localizedDescription.contains("offline") ||
@@ -163,8 +162,13 @@ internal final class LocalWhisperService: Sendable {
         progressCallback?("Processing audio...")
         let results = try await whisperKit.transcribe(audioPath: audioFileURL.path, decodeOptions: decodingOptions)
 
-        // Combine all transcription segments into a single text
-        let transcription = results.map { $0.text }.joined(separator: " ")
+        // Build final transcription from all segments
+        var accumulatedText = ""
+        for segment in results {
+            accumulatedText += (accumulatedText.isEmpty ? "" : " ") + segment.text
+        }
+
+        let transcription = accumulatedText
 
         guard !transcription.isEmpty else {
             throw LocalWhisperError.transcriptionFailed

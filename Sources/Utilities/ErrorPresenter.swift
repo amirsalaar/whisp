@@ -6,7 +6,7 @@ internal class ErrorPresenter {
     static let shared = ErrorPresenter()
     
     // Thread-safe properties with proper synchronization
-    private let queue = DispatchQueue(label: "com.audiowhisper.errorpresenter", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.voiceflow.errorpresenter", qos: .userInitiated)
     private var _isTestEnvironment: Bool = false
     
     // Cached lowercased error patterns for efficient matching
@@ -18,7 +18,7 @@ internal class ErrorPresenter {
     ]
     
     // Logger for security and debugging
-    private let logger = Logger(subsystem: "com.audiowhisper.app", category: "ErrorPresenter")
+    private let logger = Logger(subsystem: "com.voiceflow.app", category: "ErrorPresenter")
     
     var isTestEnvironment: Bool {
         get {
@@ -155,10 +155,9 @@ internal class ErrorPresenter {
         case "microphone":
             // Skip actual system settings in tests
             break
-        case "connection":
-            NotificationCenter.default.post(name: .retryRequested, object: nil)
-        case "transcription":
-            NotificationCenter.default.post(name: .retryTranscriptionRequested, object: nil)
+        case "connection", "transcription":
+            // Retry functionality removed - user needs to manually try again
+            break
         default:
             // No action for unknown error types in tests
             break
@@ -173,18 +172,12 @@ internal class ErrorPresenter {
                 DashboardWindowManager.shared.showDashboardWindow()
             case "microphone":
                 await openSystemSettings()
-            case "connection":
-                NotificationCenter.default.post(name: .retryRequested, object: nil)
-            case "transcription":
-                NotificationCenter.default.post(name: .retryTranscriptionRequested, object: nil)
+            case "connection", "transcription":
+                // Retry functionality removed - user needs to manually try again
+                break
             default:
                 // No action for unknown error types
                 break
-            }
-        case .alertThirdButtonReturn:
-            // Handle third button (Show Audio File) for transcription errors
-            if errorType == "transcription" {
-                NotificationCenter.default.post(name: .showAudioFileRequested, object: nil)
             }
         default:
             // Handle other responses (OK button, etc.)

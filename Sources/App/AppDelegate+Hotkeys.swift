@@ -51,19 +51,20 @@ internal extension AppDelegate {
         }
 
         if !recorder.hasPermission {
-            // Show permission prompt but don't open window
-            NotificationCenter.default.post(name: .recordingStartFailed, object: nil)
             return
         }
 
-        if recorder.startRecording() {
-            isHoldRecordingActive = true
-            updateMenuBarIcon(isRecording: true)
-            SoundManager().playRecordingStartSound()
-        } else {
-            isHoldRecordingActive = false
-            // Silent failure - just don't start recording
-            Logger.app.warning("Failed to start recording from press-and-hold")
+        Task { @MainActor in
+            let success = await recorder.startRecording()
+            if success {
+                isHoldRecordingActive = true
+                updateMenuBarIcon(isRecording: true)
+                SoundManager().playRecordingStartSound()
+            } else {
+                isHoldRecordingActive = false
+                // Silent failure - just don't start recording
+                Logger.app.warning("Failed to start recording from press-and-hold")
+            }
         }
     }
 
@@ -99,24 +100,24 @@ internal extension AppDelegate {
 
         Logger.app.debug("About to stop recording...")
 
-        // Get audio URL from recorder
-        guard let audioURL = recorder.stopRecording() else {
-            Logger.app.error("Failed to get audio URL from recorder")
-            resetToIdleState()
-            return
-        }
-
-        Logger.app.debug("Got audio URL: \(audioURL.path)")
-        let sessionDuration = recorder.lastRecordingDuration
-        Logger.app.debug("Session duration: \(sessionDuration ?? 0)")
-
-        // Get source app info for history tracking
-        let sourceAppInfo = currentSourceAppInfo()
-        Logger.app.debug("Source app: \(sourceAppInfo.displayName)")
-
-        // Process transcription directly - NO window needed!
-        Logger.app.debug("Creating transcription task...")
+        // Get audio URL from recorder (async to avoid blocking main thread)
         Task { @MainActor in
+            guard let audioURL = await recorder.stopRecording() else {
+                Logger.app.error("Failed to get audio URL from recorder")
+                resetToIdleState()
+                return
+            }
+
+            Logger.app.debug("Got audio URL: \(audioURL.path)")
+            let sessionDuration = recorder.lastRecordingDuration
+            Logger.app.debug("Session duration: \(sessionDuration ?? 0)")
+
+            // Get source app info for history tracking
+            let sourceAppInfo = currentSourceAppInfo()
+            Logger.app.debug("Source app: \(sourceAppInfo.displayName)")
+
+            // Process transcription directly - NO window needed!
+            Logger.app.debug("Creating transcription task...")
             do {
                 Logger.app.debug("Inside transcription task")
                 let coordinator = TranscriptionCoordinator.shared
@@ -181,48 +182,14 @@ internal extension AppDelegate {
     }
 
     func handleHotkey(source: HotkeyTriggerSource) {
+        // Standard hotkey is disabled if press-and-hold is enabled
         if source == .standardHotkey && pressAndHoldConfiguration.enabled {
             return
         }
 
-        let immediateRecording = UserDefaults.standard.bool(forKey: "immediateRecording")
-
-        if immediateRecording {
-            guard let recorder = audioRecorder else {
-                Logger.app.error("AudioRecorder not available for immediate recording")
-                toggleRecordWindow()
-                return
-            }
-
-            if recorder.isRecording {
-                updateMenuBarIcon(isRecording: false)
-                if recordingWindow == nil || recordingWindow?.isVisible == false {
-                    toggleRecordWindow()
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    NotificationCenter.default.post(name: .spaceKeyPressed, object: nil)
-                }
-            } else {
-                if !recorder.hasPermission {
-                    toggleRecordWindow()
-                    return
-                }
-
-                if recorder.startRecording() {
-                    updateMenuBarIcon(isRecording: true)
-                    SoundManager().playRecordingStartSound()
-                } else {
-                    toggleRecordWindow()
-                    NotificationCenter.default.post(
-                        name: .recordingStartFailed,
-                        object: nil
-                    )
-                }
-            }
-        } else {
-            toggleRecordWindow()
-        }
+        // Note: Standard hotkey no longer supported since we removed the recording window.
+        // Users should use press-and-hold mode (Control key) for recording.
+        Logger.app.info("Standard hotkey no longer supported - please use press-and-hold Control key")
     }
 
     private func updateMenuBarIcon(isRecording: Bool) {
@@ -251,13 +218,13 @@ internal extension AppDelegate {
         let indigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 1.0)
 
         // Create indigo tinted image
-        let indigoImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        let indigoImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
         indigoImage?.isTemplate = false
         let indigoOutlineImage = indigoImage?.tinted(with: indigoColor)
 
         // Create dimmed version for pulse effect
         let dimmedIndigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 0.5)
-        let dimmedImage = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        let dimmedImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
         dimmedImage?.isTemplate = false
         let dimmedOutlineImage = dimmedImage?.tinted(with: dimmedIndigoColor)
 
@@ -291,12 +258,55 @@ internal extension AppDelegate {
         recordingAnimationTimer = nil
     }
 
+    private func startProcessingAnimation() {
+        guard let button = statusItem?.button else { return }
+
+        stopRecordingAnimation()
+
+        let iconSize = AppSetupHelper.getAdaptiveMenuBarIconSize()
+        let config = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
+
+        let orangeColor = NSColor.systemOrange
+
+        // Rotating between two icons to show "working" state
+        let icon1 = NSImage(systemSymbolName: "ellipsis.circle.fill", accessibilityDescription: "Processing")?
+            .withSymbolConfiguration(config)
+        icon1?.isTemplate = false
+        let tinted1 = icon1?.tinted(with: orangeColor)
+
+        let dimmedColor = orangeColor.withAlphaComponent(0.4)
+        let icon2 = NSImage(systemSymbolName: "ellipsis.circle.fill", accessibilityDescription: "Processing")?
+            .withSymbolConfiguration(config)
+        icon2?.isTemplate = false
+        let tinted2 = icon2?.tinted(with: dimmedColor)
+
+        button.image = tinted1
+
+        var isPulseState = true
+
+        let queue = DispatchQueue(label: "com.voiceflow.processing-animation", qos: .background)
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: 0.6)
+
+        timer.setEventHandler { [weak self] in
+            guard let strongSelf = self, let currentButton = strongSelf.statusItem?.button else { return }
+            isPulseState.toggle()
+            Task { @MainActor in
+                currentButton.image = isPulseState ? tinted1 : tinted2
+            }
+        }
+
+        recordingAnimationTimer = timer
+        timer.resume()
+    }
+
     @objc func onRecordingStopped() {
         updateMenuBarIcon(isRecording: false)
     }
 
     @objc func onTranscriptionStarted() {
-        // No-op: keep recording animation running
+        // Switch from recording pulse to processing animation
+        startProcessingAnimation()
     }
 
     @objc func onTranscriptionCompleted() {
@@ -310,10 +320,6 @@ internal extension AppDelegate {
         if statusItem == nil {
             Logger.app.error("statusItem is nil! Recreating...")
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            if let button = statusItem?.button {
-                button.action = #selector(toggleRecordWindow)
-                button.target = self
-            }
         }
 
         guard let button = statusItem?.button else {

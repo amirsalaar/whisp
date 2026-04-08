@@ -1,7 +1,7 @@
 import XCTest
 import Foundation
 import AVFoundation
-@testable import AudioWhisper
+@testable import VoiceFlow
 
 class UtilityTests: XCTestCase {
     
@@ -31,11 +31,11 @@ class UtilityTests: XCTestCase {
         }
     }
     
-    func testDocumentsDirectoryAccess() {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        
-        XCTAssertTrue(documentsPath.isFileURL)
-        XCTAssertTrue(documentsPath.path.contains("Documents"))
+    func testApplicationSupportDirectoryAccess() {
+        let appSupportPath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+
+        XCTAssertTrue(appSupportPath.isFileURL)
+        XCTAssertTrue(appSupportPath.path.contains("Application Support"))
     }
     
     func testUniqueFilenameGeneration() {

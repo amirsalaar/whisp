@@ -3,7 +3,7 @@ import SwiftData
 import SwiftUI
 
 @main
-internal struct AudioWhisperApp: App {
+internal struct VoiceFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -21,16 +21,10 @@ internal struct AudioWhisperApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
-                Button("Dashboard...") {
+                Button("Settings...") {
                     DashboardWindowManager.shared.showDashboardWindow()
                 }
                 .keyboardShortcut(",", modifiers: .command)
-            }
-            CommandGroup(replacing: .windowArrangement) {
-                Button(LocalizedStrings.Menu.closeWindow) {
-                    NSApplication.shared.keyWindow?.orderOut(nil)
-                }
-                // No keyboard shortcut hints
             }
         }
     }

@@ -38,7 +38,7 @@ internal struct ParakeetResponse: Codable {
 }
 
 internal class ParakeetService {
-    private let logger = Logger(subsystem: "com.audiowhisper.app", category: "ParakeetService")
+    private let logger = Logger(subsystem: "com.voiceflow.app", category: "ParakeetService")
     private let daemon = MLDaemonManager.shared
 
     func transcribe(audioFileURL: URL, pythonPath _: String? = nil) async throws -> String {
@@ -65,8 +65,13 @@ internal class ParakeetService {
     private func isModelCached() -> Bool {
         let repo = selectedRepo
         let escaped = repo.replacingOccurrences(of: "/", with: "--")
-        let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/huggingface/hub/models--\(escaped)")
+
+        // Use Application Support cache instead of home directory
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return false
+        }
+        let base = appSupport
+            .appendingPathComponent("VoiceFlow/huggingface-cache/models--\(escaped)", isDirectory: true)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: base.path, isDirectory: &isDir), isDir.boolValue else { return false }
         let refsMain = base.appendingPathComponent("refs/main")

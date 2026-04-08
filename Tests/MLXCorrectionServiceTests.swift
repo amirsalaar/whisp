@@ -1,5 +1,5 @@
 import XCTest
-@testable import AudioWhisper
+@testable import VoiceFlow
 
 private final class MockMLDaemon: MLDaemonManaging {
     var lastRepo: String?

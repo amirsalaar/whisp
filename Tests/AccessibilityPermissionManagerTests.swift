@@ -1,5 +1,5 @@
 import XCTest
-@testable import AudioWhisper
+@testable import VoiceFlow
 
 final class AccessibilityPermissionManagerTests: XCTestCase {
 

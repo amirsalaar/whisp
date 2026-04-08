@@ -4,6 +4,25 @@ import ApplicationServices
 import Carbon
 import Observation
 
+// Cancellation token to prevent race condition in async callbacks
+private final class CancellationToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isCancelled = false
+
+    var isCancelled: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _isCancelled
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _isCancelled = newValue
+        }
+    }
+}
+
 // Helper class to safely capture observer in closure
 // Uses a lock to ensure thread-safe access to the mutable observer property
 // @unchecked is required because we have mutable state but we ensure thread safety via NSLock
@@ -56,18 +75,19 @@ internal class PasteManager {
         self.accessibilityManager = accessibilityManager
     }
     
-    /// Attempts to paste text to the currently active application
-    /// Uses CGEvent to simulate ⌘V 
-    func pasteToActiveApp() {
+    /// Attempts to paste text to the currently active application.
+    /// Returns `true` if paste succeeded, `false` if it failed (accessibility denied, etc.).
+    @discardableResult
+    func pasteToActiveApp() -> Bool {
         let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-        
-        if enableSmartPaste {
-            // Use CGEvent to simulate ⌘V
-            performCGEventPaste()
-        } else {
-            // Just copy to clipboard - user will manually paste
-            // Text is already in clipboard from transcription
+
+        guard enableSmartPaste else {
+            // SmartPaste disabled — text is already on clipboard
+            return false
         }
+
+        // Use CGEvent to simulate ⌘V
+        return performCGEventPaste()
     }
     
     /// SmartPaste function that attempts to paste text into a specific application
@@ -162,38 +182,37 @@ internal class PasteManager {
     
     // MARK: - CGEvent Paste
     
-    private func performCGEventPaste(completion: ((Result<Void, PasteError>) -> Void)? = nil) {
+    @discardableResult
+    private func performCGEventPaste(completion: ((Result<Void, PasteError>) -> Void)? = nil) -> Bool {
         // CRITICAL: Prevent any paste operations during tests
         if NSClassFromString("XCTestCase") != nil {
             handlePasteResult(.failure(PasteError.accessibilityPermissionDenied))
             completion?(.failure(PasteError.accessibilityPermissionDenied))
-            return
+            return false
         }
-        
+
         // CRITICAL SECURITY CHECK: Always verify accessibility permission before any CGEvent operations
         // This method should NEVER execute without proper permission - no exceptions
         guard accessibilityManager.checkPermission() else {
-            // Permission is not granted - STOP IMMEDIATELY and report error
-            // We must never attempt CGEvent operations without permission
             handlePasteResult(.failure(PasteError.accessibilityPermissionDenied))
             completion?(.failure(PasteError.accessibilityPermissionDenied))
-            return
+            return false
         }
-        
+
         // Permission is verified - proceed with paste operation
         do {
             try simulateCmdVPaste()
-            // Paste operation completed successfully
             handlePasteResult(.success(()))
             completion?(.success(()))
+            return true
         } catch let error as PasteError {
-            // Handle known paste errors
             handlePasteResult(.failure(error))
             completion?(.failure(error))
+            return false
         } catch {
-            // Handle unexpected errors during paste operation
             handlePasteResult(.failure(PasteError.keyboardEventCreationFailed))
             completion?(.failure(PasteError.keyboardEventCreationFailed))
+            return false
         }
     }
     
@@ -244,18 +263,7 @@ internal class PasteManager {
     }
     
     private func handlePasteResult(_ result: Result<Void, PasteError>) {
-        let (name, object): (Notification.Name, Any?) = {
-            switch result {
-            case .success: return (.pasteOperationSucceeded, nil)
-            case .failure(let error): return (.pasteOperationFailed, error.localizedDescription)
-            }
-        }()
-        NotificationCenter.default.post(name: name, object: object)
-    }
-    
-    @available(*, deprecated, message: "Use handlePasteResult instead")
-    private func handlePasteFailure(reason: String) {
-        handlePasteResult(.failure(PasteError.keyboardEventCreationFailed))
+        // Result tracking only — no observers registered
     }
     
     // MARK: - App Activation Handling
@@ -266,29 +274,35 @@ internal class PasteManager {
             completion()
             return
         }
-        
+
+        // Use class-based cancellation token to avoid race condition
+        let cancellationToken = CancellationToken()
         let observerBox = ObserverBox()
-        var timeoutCancelled = false
-        
+
         // Set up timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak observerBox] in
-            guard !timeoutCancelled else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak observerBox, weak cancellationToken] in
+            guard let token = cancellationToken, !token.isCancelled else { return }
+            token.isCancelled = true
+
             if let observer = observerBox?.observer {
                 NotificationCenter.default.removeObserver(observer)
             }
             // Execute completion even on timeout to avoid hanging
             completion()
         }
-        
+
         // Observe app activation
         observerBox.observer = NotificationCenter.default.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak observerBox] notification in
+        ) { [weak observerBox, weak cancellationToken] notification in
             if let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                activatedApp.processIdentifier == target.processIdentifier {
-                timeoutCancelled = true
+
+                guard let token = cancellationToken, !token.isCancelled else { return }
+                token.isCancelled = true
+
                 if let observer = observerBox?.observer {
                     NotificationCenter.default.removeObserver(observer)
                 }

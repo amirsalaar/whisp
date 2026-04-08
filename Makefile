@@ -40,9 +40,9 @@ test:
 # Clean build artifacts
 clean:
 	rm -rf .build
-	rm -rf AudioWhisper.app
 	rm -rf VoiceFlow.app
-	rm -f AudioWhisper.zip
+	rm -rf VoiceFlow.app
+	rm -f VoiceFlow.zip
 	rm -f VoiceFlow.zip
 	rm -f Sources/AudioProcessorCLI
 
@@ -72,8 +72,8 @@ release:
 	echo "Creating release v$$VERSION..."; \
 	if git diff --quiet && git diff --cached --quiet; then \
 		$(SCRIPTS)/build.sh && \
-		zip -r AudioWhisper.zip AudioWhisper.app && \
-		gh release create "v$$VERSION" AudioWhisper.zip --title "v$$VERSION" --generate-notes && \
+		zip -r VoiceFlow.zip VoiceFlow.app && \
+		gh release create "v$$VERSION" VoiceFlow.zip --title "v$$VERSION" --generate-notes && \
 		echo "✅ Release v$$VERSION created"; \
 	else \
 		echo "❌ Error: Working directory is not clean. Commit or stash changes first."; \

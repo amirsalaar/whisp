@@ -6,7 +6,7 @@ import os.log
 internal final class SemanticCorrectionService {
     private let mlxService = MLXCorrectionService()
     private let keychainService: KeychainServiceProtocol
-    private let logger = Logger(subsystem: "com.audiowhisper.app", category: "SemanticCorrection")
+    private let logger = Logger(subsystem: "com.voiceflow.app", category: "SemanticCorrection")
     
     // Chunking configuration for 32k context window
     // 32k tokens ≈ 24k words (0.75 ratio) ≈ 120k chars
@@ -85,7 +85,7 @@ internal final class SemanticCorrectionService {
 
     // MARK: - Cloud (OpenAI)
     private func correctWithOpenAI(text: String, category: CategoryDefinition) async -> String {
-        guard let apiKey = keychainService.getQuietly(service: "AudioWhisper", account: "OpenAI") else {
+        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "OpenAI") else {
             return text
         }
         let prompt = loadPrompt(for: category)
@@ -95,7 +95,7 @@ internal final class SemanticCorrectionService {
             "Content-Type": "application/json"
         ]
         let body: [String: Any] = [
-            "model": "gpt-5.1-mini",
+            "model": "gpt-4o-mini",
             "messages": [
                 ["role": "system", "content": prompt],
                 ["role": "user", "content": text]
@@ -133,7 +133,7 @@ internal final class SemanticCorrectionService {
     }
 
     private func correctWithGemini(text: String, category: CategoryDefinition) async -> String {
-        guard let apiKey = keychainService.getQuietly(service: "AudioWhisper", account: "Gemini") else {
+        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "Gemini") else {
             return text
         }
         let url = "\(geminiBaseURL)/v1beta/models/gemini-2.5-flash-lite:generateContent"
@@ -175,7 +175,7 @@ internal final class SemanticCorrectionService {
     // MARK: - Prompt file helpers
     private func promptsBaseDir() -> URL? {
         return try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("AudioWhisper/prompts", isDirectory: true)
+            .appendingPathComponent("VoiceFlow/prompts", isDirectory: true)
     }
     
     private func loadPrompt(for category: CategoryDefinition) -> String {
@@ -210,11 +210,17 @@ internal final class SemanticCorrectionService {
 
     static func normalizedEditDistance(a: String, b: String) -> Double {
         if a == b { return 0 }
-        let aChars = Array(a)
-        let bChars = Array(b)
+
+        // Cap strings to prevent OOM on very long texts
+        // 5000 chars is enough to detect significant changes while keeping memory usage reasonable
+        let maxLength = 5000
+        let aChars = Array(a.prefix(maxLength))
+        let bChars = Array(b.prefix(maxLength))
+
         let m = aChars.count
         let n = bChars.count
         if m == 0 || n == 0 { return 1 }
+
         var dp = Array(repeating: Array(repeating: 0, count: n + 1), count: m + 1)
         for i in 0...m { dp[i][0] = i }
         for j in 0...n { dp[0][j] = j }

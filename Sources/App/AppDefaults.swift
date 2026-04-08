@@ -21,7 +21,6 @@ internal enum AppDefaults {
         static let transcriptionRetentionPeriod = "transcriptionRetentionPeriod"
         static let maxModelStorageGB = "maxModelStorageGB"
         static let enableSmartPaste = "enableSmartPaste"
-        static let immediateRecording = "immediateRecording"
         static let globalHotkey = "globalHotkey"
 
         static let pressAndHoldEnabled = "pressAndHoldEnabled"
@@ -60,7 +59,6 @@ internal enum AppDefaults {
             Keys.transcriptionRetentionPeriod: RetentionPeriod.oneMonth.rawValue,
             Keys.maxModelStorageGB: 5.0,
             Keys.enableSmartPaste: false,
-            Keys.immediateRecording: false,
             Keys.globalHotkey: "F13",
 
             Keys.pressAndHoldEnabled: PressAndHoldConfiguration.defaults.enabled,

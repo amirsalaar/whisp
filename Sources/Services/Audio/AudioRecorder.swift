@@ -85,7 +85,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
         }
     }
     
-    func startRecording() -> Bool {
+    func startRecording() async -> Bool {
         // Debounce rapid recording attempts
         let now = dateProvider()
         if let last = lastRecordingAttempt, now.timeIntervalSince(last) < debounceInterval {
@@ -104,11 +104,9 @@ internal class AudioRecorder: NSObject, ObservableObject {
             return false
         }
         
-        // Boost microphone volume if enabled
+        // Boost microphone volume if enabled (await to ensure it completes before recording)
         if UserDefaults.standard.autoBoostMicrophoneVolume {
-            Task {
-                await volumeManager.boostMicrophoneVolume()
-            }
+            _ = await volumeManager.boostMicrophoneVolume()
         }
         
         let tempPath = FileManager.default.temporaryDirectory
@@ -153,26 +151,30 @@ internal class AudioRecorder: NSObject, ObservableObject {
         }
     }
     
-    func stopRecording() -> URL? {
+    func stopRecording() async -> URL? {
         let now = dateProvider()
         let sessionDuration = currentSessionStart.map { now.timeIntervalSince($0) }
         lastRecordingDuration = sessionDuration
         currentSessionStart = nil
 
         audioRecorder?.stop()
+
+        // Wait for AVAudioRecorder to flush audio data to disk
+        // AVAudioRecorder's stop() is asynchronous and may not have completed file writing
+        // Typical flush time is 50-200ms depending on buffer size
+        try? await Task.sleep(for: .milliseconds(200))
+
         audioRecorder = nil
-        
+
         // Restore microphone volume if it was boosted
         if UserDefaults.standard.autoBoostMicrophoneVolume {
-            Task {
-                await volumeManager.restoreMicrophoneVolume()
-            }
+            _ = await volumeManager.restoreMicrophoneVolume()
         }
-        
+
         // Update @Published properties on main thread
         self.isRecording = false
         self.stopLevelMonitoring()
-        
+
         return recordingURL
     }
     
