@@ -9,10 +9,14 @@ final class PermissionManagerTests: XCTestCase {
     override func setUp() {
         super.setUp()
         permissionManager = PermissionManager()
+        // Disable press-and-hold so tests that disable SmartPaste
+        // can isolate accessibility permission behavior
+        UserDefaults.standard.set(false, forKey: "pressAndHoldEnabled")
     }
 
     override func tearDown() {
         permissionManager = nil
+        UserDefaults.standard.removeObject(forKey: "pressAndHoldEnabled")
         super.tearDown()
     }
 

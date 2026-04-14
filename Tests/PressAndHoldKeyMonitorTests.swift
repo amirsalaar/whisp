@@ -33,7 +33,8 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
             keyDownHandler: keyDownHandler,
             keyUpHandler: keyUpHandler,
             addGlobalMonitor: addMonitor,
-            removeMonitor: removeMonitor
+            removeMonitor: removeMonitor,
+            checkPermission: { true }
         )
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 import os.log
 
 internal enum PressAndHoldMode: String, CaseIterable, Identifiable {
@@ -146,10 +147,13 @@ internal final class PressAndHoldKeyMonitor {
     private let addGlobalMonitor: EventMonitorFactory
     private let removeMonitor: EventMonitorRemoval
 
+    typealias PermissionCheck = () -> Bool
+
     private var flagsMonitor: Any?
     private var keyDownMonitor: Any?
     private var keyUpMonitor: Any?
     private let monitorQueue = DispatchQueue(label: "com.voiceflow.pressAndHoldMonitor")
+    private let checkPermission: PermissionCheck
 
     private var isPressed = false
 
@@ -162,17 +166,27 @@ internal final class PressAndHoldKeyMonitor {
         keyDownHandler: @escaping () -> Void,
         keyUpHandler: (() -> Void)? = nil,
         addGlobalMonitor: @escaping EventMonitorFactory = NSEvent.addGlobalMonitorForEvents(matching:handler:),
-        removeMonitor: @escaping EventMonitorRemoval = NSEvent.removeMonitor(_:)
+        removeMonitor: @escaping EventMonitorRemoval = NSEvent.removeMonitor(_:),
+        checkPermission: @escaping PermissionCheck = { AXIsProcessTrusted() }
     ) {
         self.configuration = configuration
         self.keyDownHandler = keyDownHandler
         self.keyUpHandler = keyUpHandler
         self.addGlobalMonitor = addGlobalMonitor
         self.removeMonitor = removeMonitor
+        self.checkPermission = checkPermission
     }
 
-    func start() {
+    /// Whether the monitor was able to install event listeners.
+    /// Returns `false` when Accessibility permission is denied (monitors silently fail).
+    @discardableResult
+    func start() -> Bool {
         stop()
+
+        if !checkPermission() {
+            Logger.app.warning("Press-and-hold monitor cannot start: Accessibility permission not granted. Global key monitors require Privacy & Security → Accessibility.")
+            return false
+        }
 
         let modifierFlag = configuration.key.modifierFlag
         if modifierFlag == .command || modifierFlag == .option || modifierFlag == .control || modifierFlag == .function {
@@ -187,6 +201,7 @@ internal final class PressAndHoldKeyMonitor {
                 self?.handleKeyEvent(event, isKeyDown: false)
             }
         }
+        return true
     }
 
     func stop() {

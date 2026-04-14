@@ -7,6 +7,7 @@ internal struct DashboardPermissionsView: View {
     @State private var microphoneStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @AppStorage("enableSmartPaste") private var enableSmartPaste = false
+    @AppStorage("pressAndHoldEnabled") private var pressAndHoldEnabled = true
 
     var body: some View {
         Form {
@@ -35,7 +36,7 @@ internal struct DashboardPermissionsView: View {
                 Text("VoiceFlow needs microphone access to record audio for transcription.")
             }
 
-            if enableSmartPaste {
+            if enableSmartPaste || pressAndHoldEnabled {
                 Section {
                     LabeledContent("Status") {
                         permissionLabel(
@@ -57,13 +58,22 @@ internal struct DashboardPermissionsView: View {
                 } header: {
                     Text("Accessibility")
                 } footer: {
-                    Text("Accessibility permission is required for Smart Paste to type into other apps.")
+                    if pressAndHoldEnabled && enableSmartPaste {
+                        Text("Required for Press & Hold key detection and Smart Paste.")
+                    } else if pressAndHoldEnabled {
+                        Text("Required for Press & Hold key detection. Without this permission, the shortcut key won't work.")
+                    } else {
+                        Text("Required for Smart Paste to type into other apps.")
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .onAppear(perform: refreshStatuses)
         .onChange(of: enableSmartPaste) { _, _ in
+            refreshStatuses()
+        }
+        .onChange(of: pressAndHoldEnabled) { _, _ in
             refreshStatuses()
         }
     }

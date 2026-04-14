@@ -51,33 +51,32 @@ internal class AccessibilityPermissionManager {
         if isTestEnvironment { completion(false); return }
         Task { @MainActor in
             let alert = NSAlert()
-            alert.messageText = "Accessibility Permission Required for SmartPaste"
+            alert.messageText = "Accessibility Permission Required"
             alert.informativeText = """
-            VoiceFlow's SmartPaste feature needs Accessibility permission to automatically paste transcribed text into your applications.
-            
-            🎯 What SmartPaste Does:
-            • Automatically pastes transcribed text into the app you were using before recording
-            • Switches focus back to your original application seamlessly
-            • Provides a hands-free voice-to-text workflow
-            
+            VoiceFlow needs Accessibility permission for key features to work:
+
+            🎯 What It Enables:
+            • Press & Hold shortcut key detection (global keyboard monitoring)
+            • Smart Paste — automatically pastes transcribed text into your apps
+
             🔒 Privacy Protection:
-            • VoiceFlow ONLY sends paste commands (⌘V) to applications
+            • VoiceFlow ONLY monitors modifier keys and sends paste commands
             • It never reads, monitors, or accesses content from other applications
             • No screen recording or keylogging occurs
             • All transcription happens locally on your device
-            
+
             ⚙️ What Happens Next:
             • Click "Grant Permission" to open System Settings
             • Find VoiceFlow in Privacy & Security → Accessibility
             • Toggle the switch to enable the permission
-            • Return to VoiceFlow to use SmartPaste
-            
-            ✋ Alternative:
-            If you prefer manual control, click "Continue Without SmartPaste" and use ⌘V to paste transcribed text yourself.
+            • Return to VoiceFlow
+
+            ✋ Note:
+            Without this permission, the Press & Hold shortcut key will not work.
             """
             alert.alertStyle = .informational
             alert.addButton(withTitle: "Grant Permission")
-            alert.addButton(withTitle: "Continue Without SmartPaste")
+            alert.addButton(withTitle: "Skip for Now")
             alert.addButton(withTitle: "Learn More About Accessibility Permissions")
             
             let response = alert.runModal()
@@ -336,8 +335,8 @@ internal class AccessibilityPermissionManager {
             """
             alert.alertStyle = .warning
             alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Continue Without SmartPaste")
-            
+            alert.addButton(withTitle: "Skip for Now")
+
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
                 self.openAccessibilitySystemSettings()

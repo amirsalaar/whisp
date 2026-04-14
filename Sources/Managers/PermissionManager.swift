@@ -39,9 +39,14 @@ internal class PermissionManager {
     private let isTestEnvironment: Bool
     private let accessibilityManager = AccessibilityPermissionManager()
     
-    var allPermissionsGranted: Bool {
+    private var needsAccessibility: Bool {
         let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-        if enableSmartPaste {
+        let pressAndHoldEnabled = PressAndHoldSettings.configuration().enabled
+        return enableSmartPaste || pressAndHoldEnabled
+    }
+
+    var allPermissionsGranted: Bool {
+        if needsAccessibility {
             return microphonePermissionState == .granted && accessibilityPermissionState == .granted
         } else {
             return microphonePermissionState == .granted
@@ -55,14 +60,13 @@ internal class PermissionManager {
     
     func checkPermissionState() {
         checkMicrophonePermission()
-        
-        // Only check Accessibility if SmartPaste is enabled
-        let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-        if enableSmartPaste {
+
+        // Check Accessibility if SmartPaste or Press & Hold is enabled
+        if needsAccessibility {
             checkAccessibilityPermission()
         } else {
-            // Reset accessibility state if SmartPaste is disabled
-            accessibilityPermissionState = .granted // Consider it "granted" since it's not needed
+            // Reset accessibility state if not needed
+            accessibilityPermissionState = .granted
         }
     }
     
@@ -91,40 +95,33 @@ internal class PermissionManager {
     }
     
     func requestPermissionWithEducation() {
-        let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-        
         let needsMicrophone = microphonePermissionState.needsRequest
-        let needsAccessibility = enableSmartPaste && accessibilityPermissionState.needsRequest
-        
+        let needsAccessibilityNow = needsAccessibility && accessibilityPermissionState.needsRequest
+
         let canRetryMicrophone = microphonePermissionState.canRetry
-        let canRetryAccessibility = enableSmartPaste && accessibilityPermissionState.canRetry
-        
-        if needsMicrophone || needsAccessibility {
+        let canRetryAccessibilityNow = needsAccessibility && accessibilityPermissionState.canRetry
+
+        if needsMicrophone || needsAccessibilityNow {
             showEducationalModal = true
-        } else if canRetryMicrophone || canRetryAccessibility {
+        } else if canRetryMicrophone || canRetryAccessibilityNow {
             showRecoveryModal = true
         }
     }
     
     func proceedWithPermissionRequest() {
         if isTestEnvironment {
-            // In tests, simulate permission behavior without actual system dialog
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(100))
-                // Simulate denied for consistent test behavior
                 self.microphonePermissionState = .denied
-                let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-                if enableSmartPaste {
+                if needsAccessibility {
                     self.accessibilityPermissionState = .denied
                 }
                 self.showRecoveryModal = true
             }
         } else {
             requestMicrophonePermission()
-            
-            // Only request Accessibility if SmartPaste is enabled
-            let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-            if enableSmartPaste {
+
+            if needsAccessibility {
                 requestAccessibilityPermission()
             }
         }

@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import os.log
 
 internal extension AppDelegate {
@@ -25,7 +26,25 @@ internal extension AppDelegate {
         )
 
         pressAndHoldMonitor = monitor
-        monitor.start()
+        let started = monitor.start()
+
+        if !started {
+            // Accessibility permission not granted — trigger the system prompt
+            let checkOptionPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            let options = [checkOptionPrompt: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+
+            // Poll until permission is granted, then restart the monitor
+            Task { @MainActor in
+                for _ in 0..<120 {  // up to 60 seconds
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    if AXIsProcessTrusted() {
+                        monitor.start()
+                        break
+                    }
+                }
+            }
+        }
     }
 
     private func handlePressAndHoldKeyDown() {
