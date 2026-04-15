@@ -8,6 +8,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.." || exit 1
 
+source "$SCRIPT_DIR/swiftpm-preflight.sh"
+ensure_swiftpm_manifest_is_healthy "$PWD" || exit 1
+
 # Parse command line arguments
 NOTARIZE=false
 while [[ $# -gt 0 ]]; do
@@ -68,7 +71,7 @@ struct VersionInfo {
     static let version = "$VERSION"
     static let gitHash = "$GIT_HASH"
     static let buildDate = "$BUILD_DATE"
-    
+
     static var displayVersion: String {
         if gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
@@ -76,7 +79,7 @@ struct VersionInfo {
         }
         return version
     }
-    
+
     static var fullVersionInfo: String {
         var info = "VoiceFlow \(version)"
         if gitHash != "unknown" && !gitHash.isEmpty {

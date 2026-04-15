@@ -10,6 +10,9 @@ echo "🎙️  Building VoiceFlow..."
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
+source "$PROJECT_DIR/scripts/swiftpm-preflight.sh"
+ensure_swiftpm_manifest_is_healthy "$PROJECT_DIR" || exit 1
+
 # Build for current architecture (Apple Silicon)
 echo "📦 Building release binary for arm64..."
 swift build -c release --arch arm64
