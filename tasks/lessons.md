@@ -1,0 +1,4 @@
+- Xcode ships Apple macro plugins as files like `libSwiftDataMacros.dylib`, so detection logic must match `*SwiftDataMacros*` rather than `SwiftDataMacros*`.
+- When `swift build` succeeds under full Xcode but a custom preflight reports missing macro plugins, verify the plugin filename pattern before assuming the Xcode install is incomplete.
+- Standalone Fn / Globe support needs a dedicated lower-level monitor and Input Monitoring permission; the existing AppKit global monitor path is only reliable for Command, Option, and Control.
+- When Fn / Globe is selected, keep the user's selection and surface setup/readiness guidance instead of silently normalizing it away.
