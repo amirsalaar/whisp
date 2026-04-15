@@ -4,14 +4,19 @@ import SwiftUI
 
 internal struct DashboardRecordingView: View {
     @AppStorage("selectedMicrophone") private var selectedMicrophone = ""
-    @AppStorage(AppDefaults.Keys.pressAndHoldEnabled) private var pressAndHoldEnabled = PressAndHoldConfiguration.defaults
+    @AppStorage(AppDefaults.Keys.pressAndHoldEnabled) private var pressAndHoldEnabled =
+        PressAndHoldConfiguration.defaults
         .enabled
-    @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier = PressAndHoldConfiguration
+    @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier =
+        PressAndHoldConfiguration
         .defaults.key.rawValue
-    @AppStorage(AppDefaults.Keys.pressAndHoldMode) private var pressAndHoldModeRaw = PressAndHoldConfiguration.defaults.mode
+    @AppStorage(AppDefaults.Keys.pressAndHoldMode) private var pressAndHoldModeRaw = PressAndHoldConfiguration
+        .defaults.mode
         .rawValue
-    @AppStorage(AppDefaults.Keys.pressAndHoldFnWarningAcknowledged) private var pressAndHoldFnWarningAcknowledged = false
-    @AppStorage(AppDefaults.Keys.pressAndHoldFnReadiness) private var pressAndHoldFnReadinessRaw = FnGlobeHotkeyReadiness
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnWarningAcknowledged) private
+        var pressAndHoldFnWarningAcknowledged = false
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnReadiness) private var pressAndHoldFnReadinessRaw =
+        FnGlobeHotkeyReadiness
         .requiresAcknowledgement.rawValue
     @AppStorage(AppDefaults.Keys.pressAndHoldFnFailureMessage) private var pressAndHoldFnFailureMessage = ""
 

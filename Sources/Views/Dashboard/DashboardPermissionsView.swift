@@ -10,9 +10,11 @@ internal struct DashboardPermissionsView: View {
     @State private var isInputMonitoringGranted = InputMonitoringPermissionManager().checkPermission()
     @AppStorage(AppDefaults.Keys.enableSmartPaste) private var enableSmartPaste = false
     @AppStorage(AppDefaults.Keys.pressAndHoldEnabled) private var pressAndHoldEnabled = true
-    @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier = PressAndHoldConfiguration
+    @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier =
+        PressAndHoldConfiguration
         .defaults.key.rawValue
-    @AppStorage(AppDefaults.Keys.pressAndHoldFnReadiness) private var pressAndHoldFnReadinessRaw = FnGlobeHotkeyReadiness
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnReadiness) private var pressAndHoldFnReadinessRaw =
+        FnGlobeHotkeyReadiness
         .requiresAcknowledgement.rawValue
     @AppStorage(AppDefaults.Keys.pressAndHoldFnFailureMessage) private var pressAndHoldFnFailureMessage = ""
 
@@ -152,7 +154,8 @@ internal struct DashboardPermissionsView: View {
         }
 
         if fnGlobeReadiness == .awaitingVerification {
-            return "Hold Fn / Globe until VoiceFlow starts recording. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and refresh this page."
+            return
+                "Hold Fn / Globe until VoiceFlow starts recording. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and refresh this page."
         }
 
         return nil

@@ -30,13 +30,17 @@ internal enum FnGlobeHotkeyReadiness: String {
         case .requiresAcknowledgement:
             return "Enable Fn / Globe mode first so VoiceFlow can guide you through setup."
         case .requiresInputMonitoring:
-            return "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing if macOS keeps taking over the key."
+            return
+                "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing if macOS keeps taking over the key."
         case .awaitingVerification:
-            return "Hold Fn / Globe until VoiceFlow starts recording. If nothing happens, refresh after adjusting Keyboard settings."
+            return
+                "Hold Fn / Globe until VoiceFlow starts recording. If nothing happens, refresh after adjusting Keyboard settings."
         case .ready:
-            return "VoiceFlow has seen Fn / Globe successfully. You can keep using it as your microphone trigger."
+            return
+                "VoiceFlow has seen Fn / Globe successfully. You can keep using it as your microphone trigger."
         case .unavailable:
-            return "VoiceFlow could not keep the Fn / Globe listener running. Refresh the setup after checking permissions and keyboard settings."
+            return
+                "VoiceFlow could not keep the Fn / Globe listener running. Refresh the setup after checking permissions and keyboard settings."
         }
     }
 
@@ -54,10 +58,13 @@ internal enum FnGlobeHotkeyReadiness: String {
 
 private enum FnGlobeHotkeyCopy {
     static let acknowledgementSetupMessage = "Enable Fn / Globe mode to finish setup."
-    static let inputMonitoringSetupMessage = "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing."
-    static let verificationSetupMessage = "Hold Fn / Globe to verify capture. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and try again."
+    static let inputMonitoringSetupMessage =
+        "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing."
+    static let verificationSetupMessage =
+        "Hold Fn / Globe to verify capture. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and try again."
     static let startupUnavailableMessage = "VoiceFlow could not start Fn / Globe capture on this Mac."
-    static let tapDisabledMessage = "Fn / Globe capture stopped responding. Reopen settings and refresh permissions."
+    static let tapDisabledMessage =
+        "Fn / Globe capture stopped responding. Reopen settings and refresh permissions."
 }
 
 internal enum FnGlobeHotkeyPreferenceStore {
