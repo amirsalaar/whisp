@@ -1,5 +1,39 @@
 #!/bin/bash
 
+required_apple_macro_plugins=()
+required_apple_macro_plugins+=("SwiftDataMacros")
+required_apple_macro_plugins+=("FoundationMacros")
+required_apple_macro_plugins+=("PreviewsMacros")
+
+active_developer_dir() {
+  xcode-select -p 2>/dev/null || echo "unknown"
+}
+
+developer_dir_contains_macro_plugin() {
+  local developer_dir="$1"
+  local plugin_name="$2"
+
+  if [ ! -d "$developer_dir" ]; then
+    return 1
+  fi
+
+  find "$developer_dir" -iname "*${plugin_name}*" -print -quit 2>/dev/null | grep -q .
+}
+
+missing_apple_macro_plugins() {
+  local developer_dir="$1"
+  local missing_plugins=()
+  local plugin_name
+
+  for plugin_name in "${required_apple_macro_plugins[@]}"; do
+    if ! developer_dir_contains_macro_plugin "$developer_dir" "$plugin_name"; then
+      missing_plugins+=("$plugin_name")
+    fi
+  done
+
+  printf '%s\n' "${missing_plugins[@]}"
+}
+
 swiftpm_can_load_scratch_package() {
   local scratch_dir
 
@@ -21,7 +55,7 @@ print_swiftpm_toolchain_error() {
   local manifest_output="$1"
   local developer_dir
 
-  developer_dir=$(xcode-select -p 2>/dev/null || echo "unknown")
+  developer_dir=$(active_developer_dir)
 
   echo "❌ Swift Package Manager could not evaluate Package.swift."
   echo ""
@@ -48,11 +82,47 @@ print_swiftpm_toolchain_error() {
   echo "$manifest_output" | sed -n '1,20p'
 }
 
+print_missing_macro_plugins_error() {
+  local developer_dir="$1"
+  local missing_plugins="$2"
+
+  echo "❌ VoiceFlow requires Apple Swift macro plugins that are not available in the active toolchain."
+  echo ""
+  echo "VoiceFlow uses SwiftData, Foundation predicate, and SwiftUI preview macros during compilation."
+  echo "The current developer directory can evaluate Package.swift, but it cannot load these plugins:"
+  echo "$missing_plugins" | sed 's/^/  - /'
+  echo ""
+  echo "Active developer directory: $developer_dir"
+  echo ""
+  if [ "$developer_dir" = "/Library/Developer/CommandLineTools" ]; then
+    echo "Recommended fix: install full Xcode, open it once, then select it:"
+    echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    echo "  sudo xcodebuild -runFirstLaunch"
+  else
+    echo "Recommended fix: switch to a full Xcode developer directory that includes Apple macro plugins."
+    echo "If Xcode is installed in the default location, run:"
+    echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    echo "  sudo xcodebuild -runFirstLaunch"
+  fi
+  echo ""
+  echo "If /Applications/Xcode.app does not exist, install Xcode from the App Store or Apple Developer downloads first."
+}
+
 ensure_swiftpm_manifest_is_healthy() {
   local project_dir="${1:-$PWD}"
+  local developer_dir
   local manifest_output
+  local missing_plugins
 
   if manifest_output=$(cd "$project_dir" && swift package dump-package 2>&1); then
+    developer_dir=$(active_developer_dir)
+    missing_plugins=$(missing_apple_macro_plugins "$developer_dir")
+
+    if [ -n "$missing_plugins" ]; then
+      print_missing_macro_plugins_error "$developer_dir" "$missing_plugins"
+      return 1
+    fi
+
     return 0
   fi
 
