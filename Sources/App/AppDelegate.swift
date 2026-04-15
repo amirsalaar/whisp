@@ -8,5 +8,5 @@ internal class AppDelegate: NSObject, NSApplicationDelegate {
     var pressAndHoldMonitor: PressAndHoldKeyMonitor?
     var fnGlobeMonitor: FnGlobeMonitor?
     var pressAndHoldConfiguration = PressAndHoldSettings.configuration()
-    var isHoldRecordingActive = false
+    var pressAndHoldTriggerState = PressAndHoldTriggerState()
 }

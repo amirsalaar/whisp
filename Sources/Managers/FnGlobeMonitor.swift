@@ -62,6 +62,8 @@ private enum FnGlobeHotkeyCopy {
         "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing. If VoiceFlow still cannot capture Fn after granting access, quit and reopen the app."
     static let verificationSetupMessage =
         "Hold Fn / Globe to verify capture. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and try again. If nothing changes after granting Input Monitoring, quit and reopen VoiceFlow."
+    static let recoveredTapMessage =
+        "Fn / Globe capture recovered after a system interruption. Try the key again if the last press was missed."
     static let startupUnavailableMessage = "VoiceFlow could not start Fn / Globe capture on this Mac."
     static let tapDisabledMessage =
         "Fn / Globe capture stopped responding. Reopen settings and refresh permissions."
@@ -437,7 +439,7 @@ internal final class FnGlobeMonitor {
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            processSemanticEvent(.tapDisabled)
+            handleTapDisabled()
 
         case .flagsChanged:
             handleFlagsChanged(
@@ -446,9 +448,7 @@ internal final class FnGlobeMonitor {
             )
 
         case .keyDown:
-            if isFunctionKeyDown {
-                processSemanticEvent(.otherKeyPressed)
-            }
+            handleKeyDown(keyCode: event.getIntegerValueField(.keyboardEventKeycode))
 
         default:
             break
@@ -467,6 +467,37 @@ internal final class FnGlobeMonitor {
         ]
 
         return !flags.intersection(combinationMask).isEmpty
+    }
+
+    func handleKeyDown(keyCode: Int64) {
+        guard isFunctionKeyDown else { return }
+
+        if keyCode == Int64(PressAndHoldKey.globe.keyCode) {
+            return
+        }
+
+        processSemanticEvent(.otherKeyPressed)
+    }
+
+    private func handleTapDisabled() {
+        resetPendingState()
+        endCaptureIfNeeded()
+
+        guard let eventTap else {
+            readinessHandler(
+                .unavailable,
+                FnGlobeHotkeyCopy.tapDisabledMessage
+            )
+            return
+        }
+
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        readinessHandler(
+            hasVerifiedCapture ? .ready : .awaitingVerification,
+            hasVerifiedCapture
+                ? FnGlobeHotkeyCopy.recoveredTapMessage : FnGlobeHotkeyCopy.verificationSetupMessage
+        )
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in

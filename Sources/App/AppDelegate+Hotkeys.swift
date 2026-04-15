@@ -6,8 +6,14 @@ extension AppDelegate {
     func configureShortcutMonitors() {
         stopShortcutMonitors()
 
-        if audioRecorder?.isRecording != true {
-            isHoldRecordingActive = false
+        if audioRecorder?.isRecording == true {
+            // Keep the current hold state so an active recording can still be released normally.
+        } else if pressAndHoldTriggerState.isStartPending {
+            // Treat reconfiguration during async startup as a release request so the startup task
+            // cancels cleanly instead of orphaning a half-started press-and-hold session.
+            _ = pressAndHoldTriggerState.handleKeyUp()
+        } else {
+            pressAndHoldTriggerState.reset()
         }
 
         let newConfiguration = PressAndHoldSettings.configuration()
@@ -112,25 +118,33 @@ extension AppDelegate {
     private func startRecordingFromPressAndHold() {
         guard let recorder = audioRecorder else { return }
 
-        if recorder.isRecording {
-            isHoldRecordingActive = true
+        switch pressAndHoldTriggerState.handleKeyDown(
+            recorderIsRecording: recorder.isRecording,
+            hasPermission: recorder.hasPermission
+        ) {
+        case .ignore:
             return
-        }
-
-        if !recorder.hasPermission {
+        case .keepExistingRecording:
             return
+        case .beginAsyncStart:
+            break
         }
 
         Task { @MainActor in
             let success = await recorder.startRecording()
-            if success {
-                isHoldRecordingActive = true
+
+            switch pressAndHoldTriggerState.handleStartCompletion(success: success) {
+            case .recordingStarted:
                 updateMenuBarIcon(isRecording: true)
                 SoundManager().playRecordingStartSound()
-            } else {
-                isHoldRecordingActive = false
+            case .cancelStartedRecording:
+                recorder.cancelRecording()
+                resetToIdleState()
+            case .startFailed:
                 // Silent failure - just don't start recording
                 Logger.app.warning("Failed to start recording from press-and-hold")
+            case .noOp:
+                break
             }
         }
     }
@@ -138,25 +152,30 @@ extension AppDelegate {
     private func stopRecordingFromPressAndHold() {
         Logger.app.debug("stopRecordingFromPressAndHold called")
 
-        guard isHoldRecordingActive else {
+        switch pressAndHoldTriggerState.handleKeyUp() {
+        case .ignore:
             Logger.app.debug("Not active, returning")
             return
+        case .awaitPendingStart:
+            Logger.app.debug("Recording start still pending, waiting for startup task")
+            return
+        case .stopRecording:
+            break
         }
 
         guard let recorder = audioRecorder else {
             Logger.app.error("No audioRecorder available")
-            isHoldRecordingActive = false
+            pressAndHoldTriggerState.reset()
             return
         }
 
         guard recorder.isRecording else {
             Logger.app.error("Recorder not recording")
-            isHoldRecordingActive = false
+            pressAndHoldTriggerState.reset()
             return
         }
 
         Logger.app.debug("Starting stop sequence...")
-        isHoldRecordingActive = false
 
         // Keep recording animation running during transcription
         // (icon will reset to idle when transcription completes)

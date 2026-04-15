@@ -43,3 +43,13 @@ Result: centralized Fn / Globe readiness/config helpers, reduced duplicate monit
 - [x] Run focused Whisper storage/model-manager tests and the full suite.
 
 Result: the `Get` action now points WhisperKit at the correct Hub base, completed installs are detected immediately, and previously downloaded models in the accidental `models/models` tree still resolve for refresh and delete.
+
+## Fn / Globe reliability hardening
+
+- [x] Research public Wispr Flow behavior and compare it against VoiceFlow's current Fn / Globe architecture.
+- [x] Audit the dedicated Fn / Globe monitor from first principles for standalone key classification and tap recovery.
+- [x] Fix the press-and-hold startup race so releasing the key during async recorder startup cancels cleanly.
+- [x] Add regression coverage for standalone Fn keyDown handling and the new trigger state machine.
+- [x] Re-run focused hotkey suites and the full VoiceFlow test suite.
+
+Result: VoiceFlow now keeps the dedicated global Fn / Globe event-tap path, ignores standalone Fn keyDown echoes instead of treating them as combinations, recovers the tap after interruptions, and no longer loses a key release while audio recording startup is still in flight.

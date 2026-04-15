@@ -71,6 +71,23 @@ final class FnGlobeMonitorTests: XCTestCase {
         XCTAssertEqual(readinessChanges.last, .ready)
     }
 
+    func testStandaloneFunctionKeyKeyDownDoesNotCancelPendingActivation() {
+        let keyDownExpectation = expectation(description: "keyDown")
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
+        monitor.handleKeyDown(keyCode: Int64(PressAndHoldKey.globe.keyCode))
+        monitor.activateFnIfEligible()
+
+        wait(for: [keyDownExpectation], timeout: 1.0)
+    }
+
     func testOtherKeyCancelsPendingActivation() {
         let keyDownExpectation = expectation(description: "keyDown")
         keyDownExpectation.isInverted = true
@@ -84,6 +101,24 @@ final class FnGlobeMonitorTests: XCTestCase {
 
         monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
         monitor.processSemanticEvent(.otherKeyPressed)
+        monitor.activateFnIfEligible()
+
+        wait(for: [keyDownExpectation], timeout: 0.2)
+    }
+
+    func testNonFunctionKeyDownCancelsPendingActivation() {
+        let keyDownExpectation = expectation(description: "keyDown")
+        keyDownExpectation.isInverted = true
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
+        monitor.handleKeyDown(keyCode: 12)
         monitor.activateFnIfEligible()
 
         wait(for: [keyDownExpectation], timeout: 0.2)
