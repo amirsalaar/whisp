@@ -27,3 +27,19 @@
 - [x] Run focused Fn / Globe tests and record the simplification result.
 
 Result: centralized Fn / Globe readiness/config helpers, reduced duplicate monitor setup paths, and kept model-cache changes untouched while focused hotkey tests stayed green.
+
+## Local Whisper persistence
+
+- [x] Trace the `Installed` -> `Get` regression to the WhisperKit storage probe used by refresh and recorder readiness.
+- [x] Align WhisperKit downloads and storage checks to the real Hugging Face base directory, while preserving a legacy fallback path.
+- [x] Verify the download on disk before reporting the model as installed.
+- [x] Add regression coverage for WhisperKit storage resolution and bundle completeness.
+
+## Local Whisper download retry
+
+- [x] Inspect the real Hugging Face tree created by WhisperKit during a local model install.
+- [x] Fix the WhisperKit download base so new installs land under `~/Documents/huggingface/models/...` instead of `.../models/models/...`.
+- [x] Keep compatibility with installs already created in the accidental double-`models` path.
+- [x] Run focused Whisper storage/model-manager tests and the full suite.
+
+Result: the `Get` action now points WhisperKit at the correct Hub base, completed installs are detected immediately, and previously downloaded models in the accidental `models/models` tree still resolve for refresh and delete.

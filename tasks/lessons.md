@@ -2,3 +2,5 @@
 - When `swift build` succeeds under full Xcode but a custom preflight reports missing macro plugins, verify the plugin filename pattern before assuming the Xcode install is incomplete.
 - Standalone Fn / Globe support needs a dedicated lower-level monitor and Input Monitoring permission; the existing AppKit global monitor path is only reliable for Command, Option, and Control.
 - When Fn / Globe is selected, keep the user's selection and surface setup/readiness guidance instead of silently normalizing it away.
+- WhisperKit model downloads on macOS land under `~/Documents/huggingface/models` by default; if refresh and recorder readiness probe `Application Support` instead, the UI will show a false `Installed` state until the next refresh or transcription attempt.
+- `HubApi(downloadBase:)` expects the Hugging Face base directory, not the final `models` directory. Passing `~/Documents/huggingface/models` creates installs under `.../models/models/...`, which makes post-download verification fall back to `Get` even though WhisperKit finished.
