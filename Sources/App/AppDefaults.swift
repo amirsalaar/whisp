@@ -25,6 +25,9 @@ internal enum AppDefaults {
         static let pressAndHoldEnabled = "pressAndHoldEnabled"
         static let pressAndHoldKeyIdentifier = "pressAndHoldKeyIdentifier"
         static let pressAndHoldMode = "pressAndHoldMode"
+        static let pressAndHoldFnWarningAcknowledged = "pressAndHoldFnWarningAcknowledged"
+        static let pressAndHoldFnReadiness = "pressAndHoldFnReadiness"
+        static let pressAndHoldFnFailureMessage = "pressAndHoldFnFailureMessage"
 
         static let hasCompletedWelcome = "hasCompletedWelcome"
         static let lastWelcomeVersion = "lastWelcomeVersion"
@@ -62,13 +65,15 @@ internal enum AppDefaults {
             Keys.pressAndHoldEnabled: PressAndHoldConfiguration.defaults.enabled,
             Keys.pressAndHoldKeyIdentifier: PressAndHoldConfiguration.defaults.key.rawValue,
             Keys.pressAndHoldMode: PressAndHoldConfiguration.defaults.mode.rawValue,
+            Keys.pressAndHoldFnWarningAcknowledged: false,
+            Keys.pressAndHoldFnReadiness: FnGlobeHotkeyReadiness.requiresAcknowledgement.rawValue,
+            Keys.pressAndHoldFnFailureMessage: "",
 
             Keys.hasCompletedWelcome: false,
             Keys.lastWelcomeVersion: "0",
 
             Keys.hasSetupLocalLLM: false,
-            Keys.hasSetupParakeet: false
+            Keys.hasSetupParakeet: false,
         ])
     }
 }
-

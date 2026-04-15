@@ -1,5 +1,5 @@
-import AppKit
 import AVFoundation
+import AppKit
 import os.log
 
 internal class PermissionChecker {
@@ -13,6 +13,23 @@ internal class PermissionChecker {
                 _ = await AVCaptureDevice.requestAccess(for: .audio)
             }
         }
+
+        let configuration = PressAndHoldSettings.configuration()
+        let needsInputMonitoring = configuration.requiresInputMonitoringPermission(
+            warningAcknowledged: FnGlobeHotkeyPreferenceStore.warningAcknowledged()
+        )
+        let needsAccessibility =
+            UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
+            || configuration.requiresAccessibilityPermission
+
+        if needsInputMonitoring {
+            let inputMonitoringPermissionManager = InputMonitoringPermissionManager()
+            if !inputMonitoringPermissionManager.checkPermission() {
+                _ = inputMonitoringPermissionManager.requestPermission()
+            }
+        }
+
+        guard needsAccessibility else { return }
 
         // Request accessibility permission using system prompt
         // kAXTrustedCheckOptionPrompt triggers the native system dialog

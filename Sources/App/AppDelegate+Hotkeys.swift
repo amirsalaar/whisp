@@ -2,46 +2,90 @@ import AppKit
 import ApplicationServices
 import os.log
 
-internal extension AppDelegate {
+extension AppDelegate {
     func configureShortcutMonitors() {
-        pressAndHoldMonitor?.stop()
-        pressAndHoldMonitor = nil
-        isHoldRecordingActive = false
+        stopShortcutMonitors()
+
+        if audioRecorder?.isRecording != true {
+            isHoldRecordingActive = false
+        }
 
         let newConfiguration = PressAndHoldSettings.configuration()
         pressAndHoldConfiguration = newConfiguration
 
         guard newConfiguration.enabled else { return }
 
-        let keyUpHandler: (() -> Void)? = (newConfiguration.mode == .hold) ? { [weak self] in
-            self?.handlePressAndHoldKeyUp()
-        } : nil
+        if newConfiguration.isFnGlobeEnabled {
+            configureFnGlobeMonitor(for: newConfiguration)
+            return
+        }
 
         let monitor = PressAndHoldKeyMonitor(
             configuration: newConfiguration,
             keyDownHandler: { [weak self] in
                 self?.handlePressAndHoldKeyDown()
             },
-            keyUpHandler: keyUpHandler
+            keyUpHandler: pressAndHoldKeyUpHandler(for: newConfiguration)
         )
 
         pressAndHoldMonitor = monitor
-        let started = monitor.start()
+        if !monitor.start() {
+            requestAccessibilityPermissionAndRestart(monitor)
+        }
+    }
 
-        if !started {
-            // Accessibility permission not granted — trigger the system prompt
-            let checkOptionPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-            let options = [checkOptionPrompt: true] as CFDictionary
-            AXIsProcessTrustedWithOptions(options)
+    private func configureFnGlobeMonitor(for configuration: PressAndHoldConfiguration) {
+        let inputMonitoringPermissionManager = InputMonitoringPermissionManager()
+        let inputMonitoringGranted = inputMonitoringPermissionManager.checkPermission()
 
-            // Poll until permission is granted, then restart the monitor
-            Task { @MainActor in
-                for _ in 0..<120 {  // up to 60 seconds
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    if AXIsProcessTrusted() {
-                        monitor.start()
-                        break
-                    }
+        FnGlobeHotkeyPreferenceStore.syncForConfiguration(
+            configuration,
+            inputMonitoringGranted: inputMonitoringGranted
+        )
+
+        guard FnGlobeHotkeyPreferenceStore.warningAcknowledged(), inputMonitoringGranted else { return }
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: { [weak self] in
+                self?.handlePressAndHoldKeyDown()
+            },
+            keyUpHandler: pressAndHoldKeyUpHandler(for: configuration),
+            readinessHandler: { readiness, message in
+                FnGlobeHotkeyPreferenceStore.setReadiness(readiness, message: message)
+            },
+            inputMonitoringPermissionManager: inputMonitoringPermissionManager
+        )
+
+        fnGlobeMonitor = monitor
+        _ = monitor.start()
+    }
+
+    private func stopShortcutMonitors() {
+        pressAndHoldMonitor?.stop()
+        pressAndHoldMonitor = nil
+        fnGlobeMonitor?.stop()
+        fnGlobeMonitor = nil
+    }
+
+    private func pressAndHoldKeyUpHandler(for configuration: PressAndHoldConfiguration) -> (() -> Void)? {
+        guard configuration.mode == .hold else { return nil }
+
+        return { [weak self] in
+            self?.handlePressAndHoldKeyUp()
+        }
+    }
+
+    private func requestAccessibilityPermissionAndRestart(_ monitor: PressAndHoldKeyMonitor) {
+        let checkOptionPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [checkOptionPrompt: true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+
+        Task { @MainActor in
+            for _ in 0..<120 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if AXIsProcessTrusted() {
+                    monitor.start()
+                    break
                 }
             }
         }
@@ -146,7 +190,7 @@ internal extension AppDelegate {
                 let coordinator = TranscriptionCoordinator.shared
 
                 // Set progress handler to update menu bar (optional)
-                coordinator.progressHandler = { [weak self] message in
+                coordinator.progressHandler = { message in
                     Logger.app.debug("Transcription progress: \(message)")
                 }
 
@@ -191,7 +235,8 @@ internal extension AppDelegate {
     private func currentSourceAppInfo() -> SourceAppInfo {
         // Get the frontmost app that's not VoiceFlow
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
-           frontmostApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            frontmostApp.bundleIdentifier != Bundle.main.bundleIdentifier
+        {
             return SourceAppInfo.from(app: frontmostApp) ?? SourceAppInfo.unknown
         }
 
@@ -230,13 +275,15 @@ internal extension AppDelegate {
         let indigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 1.0)
 
         // Create indigo tinted image
-        let indigoImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        let indigoImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?
+            .withSymbolConfiguration(config)
         indigoImage?.isTemplate = false
         let indigoOutlineImage = indigoImage?.tinted(with: indigoColor)
 
         // Create dimmed version for pulse effect
         let dimmedIndigoColor = NSColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 0.5)
-        let dimmedImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?.withSymbolConfiguration(config)
+        let dimmedImage = NSImage(systemSymbolName: "mic.circle.fill", accessibilityDescription: "Recording")?
+            .withSymbolConfiguration(config)
         dimmedImage?.isTemplate = false
         let dimmedOutlineImage = dimmedImage?.tinted(with: dimmedIndigoColor)
 
