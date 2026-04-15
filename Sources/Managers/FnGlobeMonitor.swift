@@ -31,7 +31,7 @@ internal enum FnGlobeHotkeyReadiness: String {
             return "Enable Fn / Globe mode first so VoiceFlow can guide you through setup."
         case .requiresInputMonitoring:
             return
-                "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing if macOS keeps taking over the key."
+                "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing if macOS keeps taking over the key. If VoiceFlow still cannot see Fn after granting access, quit and reopen the app."
         case .awaitingVerification:
             return
                 "Hold Fn / Globe until VoiceFlow starts recording. If nothing happens, refresh after adjusting Keyboard settings."
@@ -59,9 +59,9 @@ internal enum FnGlobeHotkeyReadiness: String {
 private enum FnGlobeHotkeyCopy {
     static let acknowledgementSetupMessage = "Enable Fn / Globe mode to finish setup."
     static let inputMonitoringSetupMessage =
-        "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing."
+        "Grant Input Monitoring, then set Keyboard > Press Globe key to Do Nothing. If VoiceFlow still cannot capture Fn after granting access, quit and reopen the app."
     static let verificationSetupMessage =
-        "Hold Fn / Globe to verify capture. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and try again."
+        "Hold Fn / Globe to verify capture. If macOS opens Emoji & Symbols or Dictation, set Keyboard > Press Globe key to Do Nothing and try again. If nothing changes after granting Input Monitoring, quit and reopen VoiceFlow."
     static let startupUnavailableMessage = "VoiceFlow could not start Fn / Globe capture on this Mac."
     static let tapDisabledMessage =
         "Fn / Globe capture stopped responding. Reopen settings and refresh permissions."
@@ -153,6 +153,7 @@ internal enum FnGlobeHotkeyPreferenceStore {
 internal final class InputMonitoringPermissionManager {
     private let preflight: () -> Bool
     private let requestAccess: () -> Bool
+    private let eventTapProbe: () -> Bool
 
     init(
         preflight: @escaping () -> Bool = { CGPreflightListenEventAccess() },
@@ -161,14 +162,16 @@ internal final class InputMonitoringPermissionManager {
                 return false
             }
             return CGRequestListenEventAccess()
-        }
+        },
+        eventTapProbe: @escaping () -> Bool = InputMonitoringPermissionManager.defaultEventTapProbe
     ) {
         self.preflight = preflight
         self.requestAccess = requestAccess
+        self.eventTapProbe = eventTapProbe
     }
 
     func checkPermission() -> Bool {
-        preflight()
+        preflight() || eventTapProbe()
     }
 
     @discardableResult
@@ -187,6 +190,31 @@ internal final class InputMonitoringPermissionManager {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private static func defaultEventTapProbe() -> Bool {
+        guard !AppEnvironment.isRunningTests else { return false }
+
+        let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let callback: CGEventTapCallBack = { _, _, event, _ in
+            Unmanaged.passUnretained(event)
+        }
+
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cghidEventTap,
+                place: .headInsertEventTap,
+                options: .listenOnly,
+                eventsOfInterest: eventMask,
+                callback: callback,
+                userInfo: nil
+            )
+        else {
+            return false
+        }
+
+        CFMachPortInvalidate(tap)
+        return true
     }
 }
 

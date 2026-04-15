@@ -106,7 +106,7 @@ internal struct DashboardPermissionsView: View {
                     Text("Input Monitoring")
                 } footer: {
                     Text(
-                        "Required for standalone Fn / Globe capture. VoiceFlow keeps Fn selected even if setup fails, so use Refresh after changing permissions or keyboard settings."
+                        "Required for standalone Fn / Globe capture. VoiceFlow keeps Fn selected even if setup fails, so use Refresh after changing permissions or keyboard settings. If the status still does not update after granting access, quit and reopen VoiceFlow."
                     )
                 }
             }
@@ -124,16 +124,12 @@ internal struct DashboardPermissionsView: View {
         }
     }
 
-    private var selectedPressAndHoldKey: PressAndHoldKey {
-        PressAndHoldKey(rawValue: pressAndHoldKeyIdentifier) ?? PressAndHoldConfiguration.defaults.key
+    private var currentPressAndHoldConfiguration: PressAndHoldConfiguration {
+        PressAndHoldSettings.configuration()
     }
 
-    private var currentPressAndHoldConfiguration: PressAndHoldConfiguration {
-        PressAndHoldConfiguration(
-            enabled: pressAndHoldEnabled,
-            key: selectedPressAndHoldKey,
-            mode: PressAndHoldConfiguration.defaults.mode
-        )
+    private var selectedPressAndHoldKey: PressAndHoldKey {
+        currentPressAndHoldConfiguration.key
     }
 
     private var needsAccessibility: Bool {

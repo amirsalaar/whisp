@@ -65,9 +65,6 @@ internal enum AppDefaults {
             Keys.pressAndHoldEnabled: PressAndHoldConfiguration.defaults.enabled,
             Keys.pressAndHoldKeyIdentifier: PressAndHoldConfiguration.defaults.key.rawValue,
             Keys.pressAndHoldMode: PressAndHoldConfiguration.defaults.mode.rawValue,
-            Keys.pressAndHoldFnWarningAcknowledged: false,
-            Keys.pressAndHoldFnReadiness: FnGlobeHotkeyReadiness.requiresAcknowledgement.rawValue,
-            Keys.pressAndHoldFnFailureMessage: "",
 
             Keys.hasCompletedWelcome: false,
             Keys.lastWelcomeVersion: "0",

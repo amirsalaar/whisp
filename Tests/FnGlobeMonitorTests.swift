@@ -160,4 +160,24 @@ final class FnGlobeMonitorTests: XCTestCase {
 
         XCTAssertEqual(readinessChanges.last, .unavailable)
     }
+
+    func testInputMonitoringPermissionFallsBackToEventTapProbe() {
+        let permissionManager = InputMonitoringPermissionManager(
+            preflight: { false },
+            requestAccess: { false },
+            eventTapProbe: { true }
+        )
+
+        XCTAssertTrue(permissionManager.checkPermission())
+    }
+
+    func testInputMonitoringPermissionReportsDeniedWhenBothChecksFail() {
+        let permissionManager = InputMonitoringPermissionManager(
+            preflight: { false },
+            requestAccess: { false },
+            eventTapProbe: { false }
+        )
+
+        XCTAssertFalse(permissionManager.checkPermission())
+    }
 }
