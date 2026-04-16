@@ -8,7 +8,7 @@ internal struct DashboardPermissionsView: View {
         for: .audio)
     @State private var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @State private var isInputMonitoringGranted = InputMonitoringPermissionManager().checkPermission()
-    @AppStorage(AppDefaults.Keys.enableSmartPaste) private var enableSmartPaste = false
+    @AppStorage(AppDefaults.Keys.enableSmartPaste) private var enableSmartPaste = true
     @AppStorage(AppDefaults.Keys.pressAndHoldEnabled) private var pressAndHoldEnabled = true
     @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier =
         PressAndHoldConfiguration

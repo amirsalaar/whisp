@@ -59,10 +59,10 @@ internal enum AppDefaults {
             Keys.startAtLogin: true,
             Keys.floatingMicrophoneDockEnabled: true,
             Keys.playCompletionSound: true,
-            Keys.transcriptionHistoryEnabled: false,
+            Keys.transcriptionHistoryEnabled: true,
             Keys.transcriptionRetentionPeriod: RetentionPeriod.oneMonth.rawValue,
             Keys.maxModelStorageGB: 5.0,
-            Keys.enableSmartPaste: false,
+            Keys.enableSmartPaste: true,
 
             Keys.pressAndHoldEnabled: PressAndHoldConfiguration.defaults.enabled,
             Keys.pressAndHoldKeyIdentifier: PressAndHoldConfiguration.defaults.key.rawValue,

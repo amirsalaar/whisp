@@ -158,7 +158,19 @@ internal final class TranscriptionCoordinator {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(finalText, forType: .string)
 
-        // Note: History saving removed - fully transactional workflow
+        // Save to transcript history
+        let record = TranscriptionRecord(
+            text: finalText,
+            provider: transcriptionProvider,
+            duration: sessionDuration,
+            modelUsed: transcriptionProvider == .local ? whisperModel.rawValue : nil,
+            wordCount: wordCount,
+            characterCount: characterCount,
+            sourceAppBundleId: sourceAppInfo?.bundleIdentifier,
+            sourceAppName: sourceAppInfo?.displayName,
+            sourceAppIconData: sourceAppInfo?.iconData
+        )
+        await DataManager.shared.saveTranscriptionQuietly(record)
 
         // Record usage metrics
         if let duration = sessionDuration {
