@@ -11,7 +11,10 @@ internal struct DashboardProvidersView: View {
     @AppStorage(AppDefaults.Keys.hasSetupParakeet) var hasSetupParakeet = false
     @AppStorage(AppDefaults.Keys.hasSetupLocalLLM) var hasSetupLocalLLM = false
     @AppStorage(AppDefaults.Keys.hasSetupGemma) var hasSetupGemma = false
+    @AppStorage(AppDefaults.Keys.hasSetupWhisperMLX) var hasSetupWhisperMLX = false
     @AppStorage(AppDefaults.Keys.selectedGemmaModel) var selectedGemmaModel = AppDefaults.defaultGemmaModel
+    @AppStorage(AppDefaults.Keys.selectedWhisperMLXModel) var selectedWhisperMLXModel = AppDefaults
+        .defaultWhisperMLXModel
     @AppStorage("openAIBaseURL") var openAIBaseURL = ""
     @AppStorage("geminiBaseURL") var geminiBaseURL = ""
     @AppStorage(AppDefaults.Keys.maxModelStorageGB) var maxModelStorageGB = 5.0
@@ -25,6 +28,10 @@ internal struct DashboardProvidersView: View {
     // Gemma UI state
     @State var isVerifyingGemma = false
     @State var gemmaVerifyMessage: String?
+
+    // Whisper MLX UI state
+    @State var isVerifyingWhisperMLX = false
+    @State var whisperMLXVerifyMessage: String?
 
     // UI state
     @State var openAIKey = ""
@@ -81,6 +88,12 @@ internal struct DashboardProvidersView: View {
             if transcriptionProvider == .gemma {
                 Section("Gemma Setup") {
                     gemmaCard
+                }
+            }
+
+            if transcriptionProvider == .whisperMLX {
+                Section("Whisper MLX Setup") {
+                    whisperMLXCard
                 }
             }
 
@@ -335,6 +348,8 @@ internal struct DashboardProvidersView: View {
             return EngineConfig(tagline: "NVIDIA's neural speech engine")
         case .gemma:
             return EngineConfig(tagline: "Transcription + correction in one pass")
+        case .whisperMLX:
+            return EngineConfig(tagline: "Blazing fast Whisper on Apple Silicon via MLX")
         }
     }
 
@@ -358,6 +373,10 @@ internal struct DashboardProvidersView: View {
             let repo = selectedGemmaModel.rawValue
             let cached = HuggingFaceCache.hasUsableModelSnapshot(for: repo)
             return cached && envReady ? ("Ready", true) : ("Setup", false)
+        case .whisperMLX:
+            let repo = selectedWhisperMLXModel.rawValue
+            let cached = HuggingFaceCache.hasUsableModelSnapshot(for: repo)
+            return cached && envReady ? ("Ready", true) : ("Setup", false)
         }
     }
 
@@ -374,6 +393,8 @@ internal struct DashboardProvidersView: View {
             return "bird"
         case .gemma:
             return "cpu"
+        case .whisperMLX:
+            return "waveform"
         }
     }
 

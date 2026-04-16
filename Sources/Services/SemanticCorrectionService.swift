@@ -59,7 +59,7 @@ internal final class SemanticCorrectionService {
             case .gemini:
                 logger.info("Running cloud correction: Gemini")
                 return (await correctWithGemini(text: text, category: category), nil)
-            case .local, .parakeet, .gemma:
+            case .local, .parakeet, .gemma, .whisperMLX:
                 // Don't send local text to cloud.
                 return (text, nil)
             }

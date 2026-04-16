@@ -17,6 +17,7 @@ internal enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
     case local = "local"
     case parakeet = "parakeet"
     case gemma = "gemma"
+    case whisperMLX = "whisper_mlx"
 
     var displayName: String {
         switch self {
@@ -30,6 +31,8 @@ internal enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
             return "Parakeet (Advanced)"
         case .gemma:
             return "Gemma 4 (Local)"
+        case .whisperMLX:
+            return "Whisper MLX (Local)"
         }
     }
 }
@@ -148,6 +151,38 @@ internal enum GemmaModel: String, CaseIterable, Codable, Sendable {
             return "Faster, lighter — good for quick dictation"
         case .e4b:
             return "Higher accuracy, built-in correction"
+        }
+    }
+
+    var repoId: String {
+        rawValue
+    }
+}
+
+internal enum WhisperMLXModel: String, CaseIterable, Codable, Sendable {
+    case base = "mlx-community/whisper-base-asr-fp16"
+    case small = "mlx-community/whisper-small-asr-fp16"
+    case largeTurbo = "mlx-community/whisper-large-v3-turbo-asr-fp16"
+
+    var displayName: String {
+        switch self {
+        case .base:
+            return "Base (~144 MB)"
+        case .small:
+            return "Small (~481 MB)"
+        case .largeTurbo:
+            return "Large Turbo (~1.6 GB)"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .base:
+            return "Fastest, good for quick dictation"
+        case .small:
+            return "Better accuracy, still fast"
+        case .largeTurbo:
+            return "Best accuracy, optimized for speed"
         }
     }
 

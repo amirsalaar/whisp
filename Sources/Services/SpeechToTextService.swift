@@ -34,6 +34,7 @@ internal class SpeechToTextService {
     private let localWhisperService = LocalWhisperService()
     private let parakeetService = ParakeetService()
     private let gemmaService = GemmaService()
+    private let whisperMLXService = WhisperMLXService()
     private let keychainService: KeychainServiceProtocol
     private let correctionService = SemanticCorrectionService()
 
@@ -117,6 +118,8 @@ internal class SpeechToTextService {
             return try await transcribeWithParakeet(audioURL: audioURL)
         case .gemma:
             return try await transcribeWithGemma(audioURL: audioURL)
+        case .whisperMLX:
+            return try await transcribeWithWhisperMLX(audioURL: audioURL)
         }
     }
 
@@ -172,6 +175,9 @@ internal class SpeechToTextService {
         case .gemma:
             // Gemma combines transcription + correction in one pass; skip separate correction
             return try await transcribeWithGemma(audioURL: audioURL)
+        case .whisperMLX:
+            let text = try await transcribeWithWhisperMLX(audioURL: audioURL)
+            return await correctionService.correct(text: text, providerUsed: .whisperMLX)
         }
     }
 
@@ -474,6 +480,22 @@ internal class SpeechToTextService {
                 throw ge
             }
             throw SpeechToTextError.transcriptionFailed("Gemma error: \(error.localizedDescription)")
+        }
+    }
+
+    private func transcribeWithWhisperMLX(audioURL: URL) async throws -> String {
+        guard Arch.isAppleSilicon else {
+            throw SpeechToTextError.transcriptionFailed("Whisper MLX requires an Apple Silicon Mac.")
+        }
+        _ = try UvBootstrap.ensureVenv(userPython: nil)
+        do {
+            let text = try await whisperMLXService.transcribe(audioFileURL: audioURL)
+            return Self.cleanTranscriptionText(text)
+        } catch {
+            if let we = error as? WhisperMLXError, we == .modelNotReady {
+                throw we
+            }
+            throw SpeechToTextError.transcriptionFailed("Whisper MLX error: \(error.localizedDescription)")
         }
     }
 

@@ -9,12 +9,13 @@ class TranscriptionTypesTests: XCTestCase {
 
     func testTranscriptionProviderCases() {
         let allCases = TranscriptionProvider.allCases
-        XCTAssertEqual(allCases.count, 5)
+        XCTAssertEqual(allCases.count, 6)
         XCTAssertTrue(allCases.contains(.openai))
         XCTAssertTrue(allCases.contains(.gemini))
         XCTAssertTrue(allCases.contains(.local))
         XCTAssertTrue(allCases.contains(.parakeet))
         XCTAssertTrue(allCases.contains(.gemma))
+        XCTAssertTrue(allCases.contains(.whisperMLX))
     }
 
     func testTranscriptionProviderDisplayNames() {
@@ -23,6 +24,7 @@ class TranscriptionTypesTests: XCTestCase {
         XCTAssertEqual(TranscriptionProvider.local.displayName, "Whisper (Local)")
         XCTAssertEqual(TranscriptionProvider.parakeet.displayName, "Parakeet (Advanced)")
         XCTAssertEqual(TranscriptionProvider.gemma.displayName, "Gemma 4 (Local)")
+        XCTAssertEqual(TranscriptionProvider.whisperMLX.displayName, "Whisper MLX (Local)")
     }
 
     func testTranscriptionProviderRawValues() {
@@ -31,6 +33,7 @@ class TranscriptionTypesTests: XCTestCase {
         XCTAssertEqual(TranscriptionProvider.local.rawValue, "local")
         XCTAssertEqual(TranscriptionProvider.parakeet.rawValue, "parakeet")
         XCTAssertEqual(TranscriptionProvider.gemma.rawValue, "gemma")
+        XCTAssertEqual(TranscriptionProvider.whisperMLX.rawValue, "whisper_mlx")
     }
 
     func testTranscriptionProviderFromRawValue() {
@@ -39,6 +42,7 @@ class TranscriptionTypesTests: XCTestCase {
         XCTAssertEqual(TranscriptionProvider(rawValue: "local"), .local)
         XCTAssertEqual(TranscriptionProvider(rawValue: "parakeet"), .parakeet)
         XCTAssertEqual(TranscriptionProvider(rawValue: "gemma"), .gemma)
+        XCTAssertEqual(TranscriptionProvider(rawValue: "whisper_mlx"), .whisperMLX)
         XCTAssertNil(TranscriptionProvider(rawValue: "invalid"))
     }
 

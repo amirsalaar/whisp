@@ -36,8 +36,10 @@ internal enum AppDefaults {
         static let hasSetupLocalLLM = "hasSetupLocalLLM"
         static let hasSetupParakeet = "hasSetupParakeet"
         static let hasSetupGemma = "hasSetupGemma"
+        static let hasSetupWhisperMLX = "hasSetupWhisperMLX"
 
         static let selectedGemmaModel = "selectedGemmaModel"
+        static let selectedWhisperMLXModel = "selectedWhisperMLXModel"
     }
 
     // Bump when the welcome flow/content needs to be re-shown for existing users.
@@ -50,6 +52,7 @@ internal enum AppDefaults {
     internal static let defaultSemanticCorrectionMode: SemanticCorrectionMode = .off
     internal static let defaultSemanticCorrectionModelRepo: String = "mlx-community/Qwen3-1.7B-4bit"
     internal static let defaultGemmaModel: GemmaModel = .e4b
+    internal static let defaultWhisperMLXModel: WhisperMLXModel = .largeTurbo
 
     internal static func register() {
         UserDefaults.standard.register(defaults: [
@@ -78,7 +81,9 @@ internal enum AppDefaults {
             Keys.hasSetupLocalLLM: false,
             Keys.hasSetupParakeet: false,
             Keys.hasSetupGemma: false,
+            Keys.hasSetupWhisperMLX: false,
             Keys.selectedGemmaModel: defaultGemmaModel.rawValue,
+            Keys.selectedWhisperMLXModel: defaultWhisperMLXModel.rawValue,
         ])
     }
 }

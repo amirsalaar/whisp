@@ -13,6 +13,9 @@ dependencies = [
   "numba>=0.60.0",
   "llvmlite>=0.43.0",
 
+  # Whisper MLX (dedicated STT via mlx-audio)
+  "mlx-audio>=0.4.0, <0.5.0",
+
   # Common scientific stack (allow uv to resolve suitable wheels)
   "numpy>=1.26, <3",
   "scipy>=1.11, <2",
