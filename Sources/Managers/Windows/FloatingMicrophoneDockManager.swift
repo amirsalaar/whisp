@@ -11,6 +11,9 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     private var stateCancellables = Set<AnyCancellable>()
     private var notificationObservers: [NSObjectProtocol] = []
     private var userDefaultsObserver: NSObjectProtocol?
+    private var screenObservers: [NSObjectProtocol] = []
+    private var visibleFramePollTimer: Timer?
+    private var lastVisibleFrame: NSRect = .zero
     private weak var panel: FloatingMicrophoneDockPanel?
     private weak var passthroughContainer: DockPassthroughView?
     private var primaryAction: (() -> Void)?
@@ -60,6 +63,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         bindRecorder(recorder)
         installNotificationObserversIfNeeded()
         installUserDefaultsObserverIfNeeded()
+        installScreenChangeObservers()
         updateVisibility()
     }
 
@@ -74,6 +78,15 @@ internal final class FloatingMicrophoneDockManager: NSObject {
             NotificationCenter.default.removeObserver(observer)
         }
         notificationObservers.removeAll()
+
+        for observer in screenObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        screenObservers.removeAll()
+        DistributedNotificationCenter.default().removeObserver(self)
+
+        visibleFramePollTimer?.invalidate()
+        visibleFramePollTimer = nil
 
         if let userDefaultsObserver {
             NotificationCenter.default.removeObserver(userDefaultsObserver)
@@ -137,6 +150,57 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateVisibility()
+            }
+        }
+    }
+
+    private func installScreenChangeObservers() {
+        guard screenObservers.isEmpty else { return }
+
+        // Screen resolution / display arrangement changes
+        screenObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.updatePanelPosition()
+                }
+            }
+        )
+
+        // Dock preferences changed (size slider, position, auto-hide toggle)
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(dockPreferencesDidChange),
+            name: NSNotification.Name("com.apple.dock.prefchanged"),
+            object: nil
+        )
+
+        // Poll visibleFrame as a fallback — catches animated dock resize
+        // that the notifications above may deliver before the frame settles
+        startVisibleFramePoll()
+    }
+
+    @objc private func dockPreferencesDidChange() {
+        Task { @MainActor [weak self] in
+            // Dock animates after the notification, small delay lets the frame settle
+            try? await Task.sleep(for: .milliseconds(350))
+            self?.updatePanelPosition()
+        }
+    }
+
+    private func startVisibleFramePoll() {
+        visibleFramePollTimer?.invalidate()
+        visibleFramePollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let screen = self.currentScreen() else { return }
+                let current = screen.visibleFrame
+                if current != self.lastVisibleFrame {
+                    self.lastVisibleFrame = current
+                    self.updatePanelPosition()
+                }
             }
         }
     }
@@ -214,6 +278,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         guard let screen = currentScreen() else { return }
 
         let visibleFrame = screen.visibleFrame
+        lastVisibleFrame = visibleFrame
         let origin = CGPoint(
             x: visibleFrame.midX - (maxSize.width / 2),
             y: visibleFrame.minY + LayoutMetrics.FloatingDock.bottomOffset
