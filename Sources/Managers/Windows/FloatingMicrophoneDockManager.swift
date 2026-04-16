@@ -85,8 +85,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         screenObservers.removeAll()
         DistributedNotificationCenter.default().removeObserver(self)
 
-        visibleFramePollTimer?.invalidate()
-        visibleFramePollTimer = nil
+        stopVisibleFramePoll()
 
         if let userDefaultsObserver {
             NotificationCenter.default.removeObserver(userDefaultsObserver)
@@ -178,9 +177,6 @@ internal final class FloatingMicrophoneDockManager: NSObject {
             object: nil
         )
 
-        // Poll visibleFrame as a fallback — catches animated dock resize
-        // that the notifications above may deliver before the frame settles
-        startVisibleFramePoll()
     }
 
     @objc private func dockPreferencesDidChange() {
@@ -192,7 +188,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     }
 
     private func startVisibleFramePoll() {
-        visibleFramePollTimer?.invalidate()
+        guard visibleFramePollTimer == nil else { return }
         visibleFramePollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, let screen = self.currentScreen() else { return }
@@ -205,21 +201,29 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         }
     }
 
+    private func stopVisibleFramePoll() {
+        visibleFramePollTimer?.invalidate()
+        visibleFramePollTimer = nil
+    }
+
     private func updateVisibility() {
         let shouldShow = UserDefaults.standard.bool(forKey: AppDefaults.Keys.floatingMicrophoneDockEnabled)
 
         guard shouldShow else {
             panel?.orderOut(nil)
+            stopVisibleFramePoll()
             return
         }
 
         if let panel {
             panel.orderFrontRegardless()
             updatePanelPosition()
+            startVisibleFramePoll()
             return
         }
 
         showPanel()
+        startVisibleFramePoll()
     }
 
     private func showPanel() {
