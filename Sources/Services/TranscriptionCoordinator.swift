@@ -2,52 +2,6 @@ import Foundation
 import SwiftUI
 import os.log
 
-/// Saves and restores full clipboard contents (rich text, images, files — not just plain strings).
-private struct ClipboardSnapshot {
-    private let items: [[(NSPasteboard.PasteboardType, Data)]]
-
-    private init(items: [[(NSPasteboard.PasteboardType, Data)]]) {
-        self.items = items
-    }
-
-    static func capture() -> ClipboardSnapshot {
-        let pasteboard = NSPasteboard.general
-        var snapshot: [[(NSPasteboard.PasteboardType, Data)]] = []
-
-        for item in pasteboard.pasteboardItems ?? [] {
-            var typeData: [(NSPasteboard.PasteboardType, Data)] = []
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    typeData.append((type, data))
-                }
-            }
-            if !typeData.isEmpty {
-                snapshot.append(typeData)
-            }
-        }
-
-        return ClipboardSnapshot(items: snapshot)
-    }
-
-    func restore() {
-        guard !items.isEmpty else { return }
-
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-
-        var pasteboardItems: [NSPasteboardItem] = []
-        for itemData in items {
-            let item = NSPasteboardItem()
-            for (type, data) in itemData {
-                item.setData(data, forType: type)
-            }
-            pasteboardItems.append(item)
-        }
-
-        pasteboard.writeObjects(pasteboardItems)
-    }
-}
-
 /// Coordinates transcription processing independently of UI.
 /// Handles audio transcription, semantic correction, history saving, and smart paste.
 /// This service can be called from anywhere (AppDelegate, ContentView, Dashboard)
@@ -156,13 +110,6 @@ internal final class TranscriptionCoordinator {
         let wordCount = UsageMetricsStore.estimatedWordCount(for: finalText)
         let characterCount = finalText.count
 
-        // Save current clipboard contents for restoration after paste
-        let savedClipboard = ClipboardSnapshot.capture()
-
-        // Copy to clipboard
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(finalText, forType: .string)
-
         // Save to transcript history
         let record = TranscriptionRecord(
             text: finalText,
@@ -189,27 +136,19 @@ internal final class TranscriptionCoordinator {
         // Record source app usage
         recordSourceUsage(words: wordCount, characters: characterCount, sourceInfo: sourceAppInfo)
 
-        // Auto-paste if enabled and requested
-        var didPaste = false
+        // Type directly into the focused app (bypasses clipboard entirely)
         if shouldPaste {
             let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
             Logger.app.debug("SmartPaste enabled=\(enableSmartPaste)")
             if enableSmartPaste {
                 try? await Task.sleep(for: .milliseconds(100))
-                didPaste = pasteManager.pasteToActiveApp()
-                Logger.app.debug("SmartPaste paste result=\(didPaste)")
+                let didType = pasteManager.typeToActiveApp(text: finalText)
+                Logger.app.debug("SmartPaste type result=\(didType)")
 
-                if !didPaste {
-                    // Paste failed (accessibility denied, etc.) — show prominent alert
+                if !didType {
                     await showPasteFailureAlert()
                 }
             }
-        }
-
-        // Restore previous clipboard after paste has had time to complete
-        if didPaste {
-            try? await Task.sleep(for: .milliseconds(500))
-            savedClipboard.restore()
         }
 
         Logger.app.info("Transcription completed: \(wordCount) words, \(characterCount) characters")

@@ -76,7 +76,40 @@ internal class PasteManager {
         self.accessibilityManager = accessibilityManager
     }
     
-    /// Attempts to paste text to the currently active application.
+    /// Types text directly into the focused application via CGEvent keyboard events.
+    /// Does NOT touch the clipboard. Returns `true` on success.
+    @discardableResult
+    func typeToActiveApp(text: String) -> Bool {
+        let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
+
+        guard enableSmartPaste else {
+            Logger.app.debug("SmartPaste: disabled in settings, skipping type")
+            return false
+        }
+
+        // CRITICAL: Prevent any CGEvent operations during tests
+        if NSClassFromString("XCTestCase") != nil {
+            Logger.app.debug("SmartPaste: test environment, skipping type")
+            return false
+        }
+
+        guard accessibilityManager.checkPermission() else {
+            Logger.app.debug("SmartPaste: accessibility permission denied")
+            return false
+        }
+
+        Logger.app.debug("SmartPaste: typing \(text.count) characters directly via CGEvent")
+        do {
+            try typeTextViaCGEvent(text)
+            Logger.app.debug("SmartPaste: direct type succeeded")
+            return true
+        } catch {
+            Logger.app.error("SmartPaste: direct type failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Attempts to paste text to the currently active application via clipboard + ⌘V.
     /// Returns `true` if paste succeeded, `false` if it failed (accessibility denied, etc.).
     @discardableResult
     func pasteToActiveApp() -> Bool {
@@ -263,6 +296,38 @@ internal class PasteManager {
         // This simulates pressing and releasing ⌘V
         keyVDown.post(tap: .cgSessionEventTap)
         keyVUp.post(tap: .cgSessionEventTap)
+    }
+
+    /// Types text directly into the focused app using CGEvent keyboard events with Unicode strings.
+    /// Does NOT use the clipboard. Each event carries a chunk of UTF-16 characters.
+    private func typeTextViaCGEvent(_ text: String) throws {
+        guard accessibilityManager.checkPermission() else {
+            throw PasteError.accessibilityPermissionDenied
+        }
+
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            throw PasteError.eventSourceCreationFailed
+        }
+
+        let utf16 = Array(text.utf16)
+        // CGEventKeyboardSetUnicodeString supports up to 20 UTF-16 code units per event
+        let chunkSize = 20
+
+        for offset in stride(from: 0, to: utf16.count, by: chunkSize) {
+            let end = min(offset + chunkSize, utf16.count)
+            var chunk = Array(utf16[offset..<end])
+
+            guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                  let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+                throw PasteError.keyboardEventCreationFailed
+            }
+
+            keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
+            keyUp.keyboardSetUnicodeString(stringLength: 0, unicodeString: &chunk)
+
+            keyDown.post(tap: .cgSessionEventTap)
+            keyUp.post(tap: .cgSessionEventTap)
+        }
     }
     
     private func handlePasteResult(_ result: Result<Void, PasteError>) {
