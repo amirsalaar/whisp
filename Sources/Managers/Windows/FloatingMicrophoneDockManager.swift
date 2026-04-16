@@ -7,26 +7,37 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     static let shared = FloatingMicrophoneDockManager()
 
     private let viewModel = FloatingMicrophoneDockViewModel()
-    private var cancellables = Set<AnyCancellable>()
+    private var recorderCancellables = Set<AnyCancellable>()
+    private var stateCancellables = Set<AnyCancellable>()
     private var notificationObservers: [NSObjectProtocol] = []
     private var userDefaultsObserver: NSObjectProtocol?
     private weak var panel: FloatingMicrophoneDockPanel?
-    private var windowDelegate: FloatingMicrophoneDockWindowDelegate?
     private var primaryAction: (() -> Void)?
+    private var cancelAction: (() -> Void)?
     private var openSettingsAction: (() -> Void)?
 
     private override init() {
         super.init()
+
+        viewModel.$status
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] status in
+                self?.updatePanelLayout(for: status, animated: true)
+            }
+            .store(in: &stateCancellables)
     }
 
     func configure(
         recorder: AudioRecorder,
         primaryAction: @escaping () -> Void,
+        cancelAction: @escaping () -> Void,
         openSettingsAction: @escaping () -> Void
     ) {
         guard !AppEnvironment.isRunningTests else { return }
 
         self.primaryAction = primaryAction
+        self.cancelAction = cancelAction
         self.openSettingsAction = openSettingsAction
 
         bindRecorder(recorder)
@@ -36,15 +47,11 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     }
 
     func refreshPositionIfNeeded() {
-        guard let panel else { return }
-
-        if !clampPanelToVisibleFrame(panel) {
-            positionPanel(panel)
-        }
+        updatePanelLayout(animated: false)
     }
 
     func stop() {
-        cancellables.removeAll()
+        recorderCancellables.removeAll()
 
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
@@ -58,11 +65,10 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 
         panel?.close()
         panel = nil
-        windowDelegate = nil
     }
 
     private func bindRecorder(_ recorder: AudioRecorder) {
-        cancellables.removeAll()
+        recorderCancellables.removeAll()
 
         recorder.$isRecording
             .combineLatest(recorder.$audioLevel, recorder.$hasPermission)
@@ -74,7 +80,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
                     hasPermission: hasPermission
                 )
             }
-            .store(in: &cancellables)
+            .store(in: &recorderCancellables)
     }
 
     private func installNotificationObserversIfNeeded() {
@@ -127,7 +133,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 
         if let panel {
             panel.orderFrontRegardless()
-            clampPanelToVisibleFrame(panel)
+            updatePanelLayout(animated: false)
             return
         }
 
@@ -140,13 +146,17 @@ internal final class FloatingMicrophoneDockManager: NSObject {
             onPrimaryAction: { [weak self] in
                 self?.primaryAction?()
             },
+            onCancelAction: { [weak self] in
+                self?.cancelAction?()
+            },
             onSettingsAction: { [weak self] in
                 self?.openSettingsAction?()
             }
         )
 
         let panel = FloatingMicrophoneDockPanel(
-            contentRect: NSRect(origin: .zero, size: LayoutMetrics.FloatingDock.size),
+            contentRect: NSRect(
+                origin: .zero, size: FloatingMicrophoneDockLayout.size(for: viewModel.status)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -158,86 +168,49 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         panel.level = .statusBar
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.contentViewController = NSHostingController(rootView: dockView)
 
-        windowDelegate = FloatingMicrophoneDockWindowDelegate(manager: self)
-        panel.delegate = windowDelegate
-
-        if !panel.setFrameUsingName(Self.autosaveName) {
-            positionPanel(panel)
-        }
-        panel.setFrameAutosaveName(Self.autosaveName)
-        panel.orderFrontRegardless()
-
         self.panel = panel
+        updatePanelLayout(animated: false)
+        panel.orderFrontRegardless()
     }
 
-    private func positionPanel(_ panel: NSPanel) {
-        guard let screen = currentScreen(for: panel) else { return }
+    private func updatePanelLayout(for status: AppStatus? = nil, animated: Bool) {
+        guard let panel else { return }
 
-        let frame = screen.visibleFrame
+        let status = status ?? viewModel.status
+        let size = FloatingMicrophoneDockLayout.size(for: status)
+        guard let screen = currentScreen() else { return }
+
+        let visibleFrame = screen.visibleFrame
         let origin = CGPoint(
-            x: frame.maxX - LayoutMetrics.FloatingDock.width - LayoutMetrics.FloatingDock.screenInset,
-            y: frame.minY + LayoutMetrics.FloatingDock.screenInset
+            x: visibleFrame.midX - (size.width / 2),
+            y: visibleFrame.minY + LayoutMetrics.FloatingDock.bottomOffset
         )
-        panel.setFrameOrigin(origin)
+
+        panel.setFrame(NSRect(origin: origin, size: size), display: true, animate: animated)
     }
 
-    @discardableResult
-    private func clampPanelToVisibleFrame(_ panel: NSPanel) -> Bool {
-        guard let screen = currentScreen(for: panel) else { return false }
-
-        let visibleFrame = screen.visibleFrame.insetBy(
-            dx: LayoutMetrics.FloatingDock.screenInset / 2,
-            dy: LayoutMetrics.FloatingDock.screenInset / 2
-        )
-        var frame = panel.frame
-
-        let clampedX = min(max(frame.origin.x, visibleFrame.minX), visibleFrame.maxX - frame.width)
-        let clampedY = min(max(frame.origin.y, visibleFrame.minY), visibleFrame.maxY - frame.height)
-
-        if clampedX == frame.origin.x && clampedY == frame.origin.y {
-            return true
+    private func currentScreen() -> NSScreen? {
+        if let mainScreen = NSScreen.main {
+            return mainScreen
         }
 
-        frame.origin = CGPoint(x: clampedX, y: clampedY)
-        panel.setFrame(frame, display: true, animate: false)
-        return true
-    }
-
-    private func currentScreen(for panel: NSPanel?) -> NSScreen? {
-        if let panel {
-            let panelCenter = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
-            if let matchingScreen = NSScreen.screens.first(where: { $0.frame.contains(panelCenter) }) {
-                return matchingScreen
-            }
+        let mouseLocation = NSEvent.mouseLocation
+        if let matchingScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) {
+            return matchingScreen
         }
 
-        return NSScreen.main ?? NSScreen.screens.first
+        return NSScreen.screens.first
     }
-
-    private static let autosaveName = "VoiceFlowFloatingMicrophoneDock"
 }
 
 private final class FloatingMicrophoneDockPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-}
-
-private final class FloatingMicrophoneDockWindowDelegate: NSObject, NSWindowDelegate {
-    private weak var manager: FloatingMicrophoneDockManager?
-
-    init(manager: FloatingMicrophoneDockManager) {
-        self.manager = manager
-        super.init()
-    }
-
-    func windowDidMove(_ notification: Notification) {
-        manager?.refreshPositionIfNeeded()
-    }
 }

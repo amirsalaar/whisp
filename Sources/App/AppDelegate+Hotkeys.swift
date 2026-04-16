@@ -109,6 +109,18 @@ extension AppDelegate {
         }
     }
 
+    func cancelFloatingMicrophoneDockRecording() {
+        guard let recorder = audioRecorder else { return }
+
+        pressAndHoldTriggerState.reset()
+
+        if recorder.isRecording {
+            recorder.cancelRecording()
+        }
+
+        resetToIdleState()
+    }
+
     func showFloatingMicrophoneDockSettings() {
         let selectedNav: DashboardNavItem = (audioRecorder?.hasPermission == true) ? .recording : .permissions
         DashboardWindowManager.shared.showDashboardWindow(selectedNav: selectedNav)

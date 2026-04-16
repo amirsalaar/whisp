@@ -73,3 +73,12 @@ Result: VoiceFlow now launches an always-available floating microphone dock by d
 - [x] Verify with focused recorder/hotkey tests, the full suite, and `make build`.
 
 Result: VoiceFlow no longer greets users with a chain of system permission dialogs on startup. Basic dictation now works from the floating dock with microphone permission only, while Smart Paste and background hotkeys remain opt-in advanced features with clearer guidance.
+
+## Floating dock visual redesign
+
+- [x] Replace the original cream card dock with a darker capsule-style HUD closer to the Wispr reference.
+- [x] Center the dock horizontally above the macOS Dock instead of pinning it to the right edge.
+- [x] Add a compact recording state with explicit cancel and stop controls.
+- [x] Verify with `swift build`, focused dock tests, and the full VoiceFlow test suite.
+
+Result: the floating dock now opens as a centered bottom HUD, uses a darker capsule treatment in the idle state, and collapses into a compact recording control with separate cancel and stop actions while the full suite stays green.

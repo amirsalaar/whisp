@@ -1,5 +1,16 @@
 import SwiftUI
 
+internal enum FloatingMicrophoneDockLayout {
+    static func size(for status: AppStatus) -> CGSize {
+        switch status {
+        case .recording:
+            return LayoutMetrics.FloatingDock.compactSize
+        default:
+            return LayoutMetrics.FloatingDock.expandedSize
+        }
+    }
+}
+
 @MainActor
 internal final class FloatingMicrophoneDockViewModel: ObservableObject {
     @Published private(set) var status: AppStatus = .ready
@@ -101,89 +112,157 @@ internal final class FloatingMicrophoneDockViewModel: ObservableObject {
 
 internal struct FloatingMicrophoneDockView: View {
     @ObservedObject var viewModel: FloatingMicrophoneDockViewModel
+    @AppStorage(AppDefaults.Keys.pressAndHoldEnabled) private var pressAndHoldEnabled =
+        PressAndHoldConfiguration.defaults.enabled
+    @AppStorage(AppDefaults.Keys.pressAndHoldKeyIdentifier) private var pressAndHoldKeyIdentifier =
+        PressAndHoldConfiguration.defaults.key.rawValue
 
     let onPrimaryAction: () -> Void
+    let onCancelAction: () -> Void
     let onSettingsAction: () -> Void
 
-    private let cream = Color(red: 0.98, green: 0.96, blue: 0.93)
-    private let border = Color(red: 0.84, green: 0.81, blue: 0.77)
-    private let ink = Color(red: 0.18, green: 0.15, blue: 0.13)
-    private let muted = Color(red: 0.45, green: 0.42, blue: 0.39)
-    private let accent = Color(red: 0.76, green: 0.42, blue: 0.32)
+    private let shell = Color.black.opacity(0.84)
+    private let shellBorder = Color.white.opacity(0.16)
+    private let shellHighlight = Color.white.opacity(0.05)
+    private let text = Color.white.opacity(0.96)
+    private let mutedText = Color.white.opacity(0.62)
+    private let subtleFill = Color.white.opacity(0.08)
+    private let danger = Color(red: 0.95, green: 0.42, blue: 0.41)
 
     var body: some View {
-        HStack(spacing: 14) {
-            dockOrb
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("VoiceFlow")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(muted)
-
-                Text(primaryText)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(ink)
-                    .lineLimit(1)
-
-                Text(secondaryText)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(muted)
-                    .lineLimit(2)
+        Group {
+            if isRecording {
+                recordingDock
+            } else {
+                expandedDock
             }
-
-            Spacer(minLength: 8)
-
-            Button(action: onSettingsAction) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(muted)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.white.opacity(0.72))
-                    )
-            }
-            .buttonStyle(.plain)
-            .help("Open VoiceFlow settings")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(width: LayoutMetrics.FloatingDock.width, height: LayoutMetrics.FloatingDock.height)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(cream)
-                .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
+        .frame(
+            width: FloatingMicrophoneDockLayout.size(for: viewModel.status).width,
+            height: FloatingMicrophoneDockLayout.size(for: viewModel.status).height
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(border, lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 24))
-        .onTapGesture {
-            guard viewModel.isPrimaryActionEnabled else { return }
-            onPrimaryAction()
-        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isRecording)
+        .animation(.easeInOut(duration: 0.18), value: viewModel.status)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
     }
 
-    private var dockOrb: some View {
-        ZStack {
-            Circle()
-                .fill(orbBackground)
-
-            if isRecording {
-                InkRippleView(audioLevel: viewModel.audioLevel, isActive: true)
-                    .clipShape(Circle())
-                    .padding(4)
+    private var expandedDock: some View {
+        VStack(spacing: 8) {
+            Button(action: onPrimaryAction) {
+                Text(primaryText)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(text)
+                    .lineLimit(1)
+                    .padding(.horizontal, 18)
+                    .frame(minWidth: 300)
+                    .frame(height: 42)
+                    .background(capsuleBackground)
             }
+            .buttonStyle(.plain)
+            .disabled(!viewModel.isPrimaryActionEnabled)
+            .help(primaryButtonHelp)
 
-            Image(systemName: orbIcon)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(orbForeground)
+            Button(action: onSettingsAction) {
+                HStack(spacing: 4) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        Circle()
+                            .fill(mutedText)
+                            .frame(width: 3, height: 3)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background(smallCapsuleBackground)
+            }
+            .buttonStyle(.plain)
+            .help("Open VoiceFlow settings")
         }
-        .frame(width: 52, height: 52)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var recordingDock: some View {
+        HStack(spacing: 10) {
+            Button(action: onCancelAction) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(text)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        Circle()
+                            .fill(subtleFill)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Cancel dictation")
+
+            waveform
+
+            Button(action: onPrimaryAction) {
+                ZStack {
+                    Circle()
+                        .fill(danger)
+                        .frame(width: 22, height: 22)
+
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(Color.white)
+                        .frame(width: 8, height: 8)
+                }
+                .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help("Stop and transcribe")
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .background(capsuleBackground)
+    }
+
+    private var capsuleBackground: some View {
+        Capsule(style: .continuous)
+            .fill(shell)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(shellBorder, lineWidth: 1)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(shellHighlight, lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 14, y: 10)
+    }
+
+    private var smallCapsuleBackground: some View {
+        Capsule(style: .continuous)
+            .fill(shell)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(shellBorder, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.22), radius: 10, y: 6)
+    }
+
+    private var waveform: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(0..<10, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(text)
+                    .frame(width: 3, height: barHeight(for: index))
+            }
+        }
+        .frame(width: 58, height: 24)
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let level = max(0.12, CGFloat(viewModel.audioLevel))
+        let waveformPattern: [CGFloat] = [0.28, 0.46, 0.72, 0.94, 0.78, 0.52, 0.36, 0.68, 0.88, 0.58]
+        let amplitude = waveformPattern[index % waveformPattern.count]
+        return 5 + (level * amplitude * 11)
+    }
+
+    private var selectedPressAndHoldKey: PressAndHoldKey {
+        PressAndHoldKey(rawValue: pressAndHoldKeyIdentifier) ?? PressAndHoldConfiguration.defaults.key
     }
 
     private var isRecording: Bool {
@@ -197,87 +276,44 @@ internal struct FloatingMicrophoneDockView: View {
     private var primaryText: String {
         switch viewModel.status {
         case .recording:
-            return "Listening everywhere"
+            return "Listening"
         case .processing:
-            return "Processing transcript"
+            return "Transcribing…"
         case .success:
             return "Transcript ready"
         case .permissionRequired:
-            return "Microphone permission needed"
+            return "Click to allow microphone"
         case .error(let message):
             return message
         case .downloadingModel(let message):
             return message
         case .ready:
-            return "Click to start dictation"
+            return readyPromptText
         }
     }
 
-    private var secondaryText: String {
+    private var readyPromptText: String {
+        guard pressAndHoldEnabled else {
+            return "Click to start dictating"
+        }
+
+        if selectedPressAndHoldKey == .globe {
+            return "Click or hold fn to start dictating"
+        }
+
+        return "Click or use hotkey to start dictating"
+    }
+
+    private var primaryButtonHelp: String {
         switch viewModel.status {
-        case .recording:
-            return "Release Fn or click again to stop."
+        case .permissionRequired:
+            return "Request microphone access"
         case .processing:
-            return "VoiceFlow is transcribing in the background."
+            return "VoiceFlow is transcribing"
         case .success:
-            return "Ready for the next dictation."
-        case .permissionRequired:
-            return "Click once to grant mic access. Hotkeys and Smart Paste are optional later."
-        case .error:
-            return "Open settings to inspect the current setup."
-        case .downloadingModel:
-            return "Model downloads continue while the dock stays available."
-        case .ready:
-            return "Start with the dock. Add hotkeys or Smart Paste later in Settings."
-        }
-    }
-
-    private var orbBackground: Color {
-        switch viewModel.status {
-        case .recording:
-            return accent
-        case .processing:
-            return accent.opacity(0.22)
-        case .success:
-            return Color.green.opacity(0.85)
-        case .permissionRequired:
-            return muted.opacity(0.18)
-        case .error:
-            return Color.red.opacity(0.18)
-        case .downloadingModel:
-            return accent.opacity(0.18)
-        case .ready:
-            return accent.opacity(0.16)
-        }
-    }
-
-    private var orbForeground: Color {
-        switch viewModel.status {
-        case .recording, .success:
-            return .white
-        case .processing, .ready, .downloadingModel:
-            return accent
-        case .permissionRequired:
-            return muted
-        case .error:
-            return .red
-        }
-    }
-
-    private var orbIcon: String {
-        switch viewModel.status {
-        case .recording:
-            return "stop.fill"
-        case .processing:
-            return "ellipsis"
-        case .success:
-            return "checkmark"
-        case .permissionRequired:
-            return "mic.slash.fill"
-        case .error:
-            return "exclamationmark"
-        case .downloadingModel, .ready:
-            return "mic.fill"
+            return "Ready for the next dictation"
+        default:
+            return "Start dictation"
         }
     }
 
@@ -301,11 +337,14 @@ internal struct FloatingMicrophoneDockView: View {
     }
 
     private var accessibilityHint: String {
-        if viewModel.isPrimaryActionEnabled {
-            return "Click to start or stop recording. Use the settings button for configuration."
+        switch viewModel.status {
+        case .recording:
+            return "Use the left button to cancel or the right button to stop and transcribe."
+        case .processing:
+            return "VoiceFlow is currently processing audio."
+        default:
+            return "Click the main pill to start dictation. Use the smaller pill for settings."
         }
-
-        return "VoiceFlow is currently processing audio."
     }
 }
 
@@ -316,8 +355,9 @@ internal struct FloatingMicrophoneDockView: View {
     return FloatingMicrophoneDockView(
         viewModel: viewModel,
         onPrimaryAction: {},
+        onCancelAction: {},
         onSettingsAction: {}
     )
     .padding(24)
-    .background(Color.gray.opacity(0.25))
+    .background(Color.black)
 }

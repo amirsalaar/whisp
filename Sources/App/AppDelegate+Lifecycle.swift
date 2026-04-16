@@ -44,6 +44,9 @@ extension AppDelegate {
                 primaryAction: { [weak self] in
                     self?.handleFloatingMicrophoneDockPrimaryAction()
                 },
+                cancelAction: { [weak self] in
+                    self?.cancelFloatingMicrophoneDockRecording()
+                },
                 openSettingsAction: { [weak self] in
                     self?.showFloatingMicrophoneDockSettings()
                 }

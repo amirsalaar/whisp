@@ -12,9 +12,8 @@ internal enum LayoutMetrics {
     }
 
     enum FloatingDock {
-        static let width: CGFloat = 280
-        static let height: CGFloat = 92
-        static let size = CGSize(width: width, height: height)
-        static let screenInset: CGFloat = 28
+        static let expandedSize = CGSize(width: 440, height: 108)
+        static let compactSize = CGSize(width: 190, height: 52)
+        static let bottomOffset: CGFloat = 14
     }
 }
