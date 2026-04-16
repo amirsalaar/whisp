@@ -109,6 +109,6 @@ Prefer existing dependencies over introducing new ones.
 ## Gotchas
 
 - **Accessibility permission invalidated on every rebuild** (ad-hoc signing). After `make install`: System Settings > Accessibility > remove Whisp > re-add `/Applications/Whisp.app` > toggle ON. SmartPaste silently fails without this.
-- **"Build succeeded" then "Build failed"**: Swift build works but post-build steps fail. Check if `.build/arm64-apple-macosx/release/Whisp` exists; run `scripts/install-voiceflow.sh` manually.
+- **"Build succeeded" then "Build failed"**: Swift build works but post-build steps fail. Check if `.build/arm64-apple-macosx/release/Whisp` exists; run `scripts/install-whisp.sh` manually.
 - **Safe-to-ignore warnings**: `AddInstanceForFactory: No factory registered...` and `LoudnessManager.mm: unknown value` are Apple framework noise.
 - **Entry point is `AudioWhisperApp.swift`**, not `WhispApp.swift` (legacy naming from the AudioWhisper fork).
