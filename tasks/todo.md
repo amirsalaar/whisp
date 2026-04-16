@@ -53,3 +53,13 @@ Result: the `Get` action now points WhisperKit at the correct Hub base, complete
 - [x] Re-run focused hotkey suites and the full VoiceFlow test suite.
 
 Result: VoiceFlow now keeps the dedicated global Fn / Globe event-tap path, ignores standalone Fn keyDown echoes instead of treating them as combinations, recovers the tap after interruptions, and no longer loses a key release while audio recording startup is still in flight.
+
+## Floating microphone dock
+
+- [x] Add a floating, non-activating dock that stays visible across apps and Spaces.
+- [x] Reuse real recorder and transcription state so the dock reflects listening, processing, success, and permission states.
+- [x] Add a General preference to show or hide the dock.
+- [x] Add focused regression coverage for the dock state model.
+- [x] Verify with `swift build`, focused dock/hotkey tests, the full suite, and `make build`.
+
+Result: VoiceFlow now launches an always-available floating microphone dock by default, keeps it synchronized with live recorder/transcription state, lets users disable it from General settings, and builds cleanly in both debug and packaged app flows.

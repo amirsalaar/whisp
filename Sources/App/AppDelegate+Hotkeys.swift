@@ -115,6 +115,35 @@ extension AppDelegate {
         stopRecordingFromPressAndHold()
     }
 
+    func handleFloatingMicrophoneDockPrimaryAction() {
+        guard let recorder = audioRecorder else { return }
+
+        guard recorder.hasPermission else {
+            recorder.requestMicrophonePermission()
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                if recorder.hasPermission {
+                    return
+                }
+
+                showFloatingMicrophoneDockSettings()
+            }
+            return
+        }
+
+        if recorder.isRecording {
+            stopRecordingFromPressAndHold()
+        } else {
+            startRecordingFromPressAndHold()
+        }
+    }
+
+    func showFloatingMicrophoneDockSettings() {
+        let selectedNav: DashboardNavItem = (audioRecorder?.hasPermission == true) ? .recording : .permissions
+        DashboardWindowManager.shared.showDashboardWindow(selectedNav: selectedNav)
+    }
+
     private func startRecordingFromPressAndHold() {
         guard let recorder = audioRecorder else { return }
 

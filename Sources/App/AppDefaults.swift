@@ -16,6 +16,7 @@ internal enum AppDefaults {
         static let semanticCorrectionModelRepo = "semanticCorrectionModelRepo"
 
         static let startAtLogin = "startAtLogin"
+        static let floatingMicrophoneDockEnabled = "floatingMicrophoneDockEnabled"
         static let playCompletionSound = "playCompletionSound"
         static let transcriptionHistoryEnabled = "transcriptionHistoryEnabled"
         static let transcriptionRetentionPeriod = "transcriptionRetentionPeriod"
@@ -56,6 +57,7 @@ internal enum AppDefaults {
             Keys.semanticCorrectionModelRepo: defaultSemanticCorrectionModelRepo,
 
             Keys.startAtLogin: true,
+            Keys.floatingMicrophoneDockEnabled: true,
             Keys.playCompletionSound: true,
             Keys.transcriptionHistoryEnabled: false,
             Keys.transcriptionRetentionPeriod: RetentionPeriod.oneMonth.rawValue,

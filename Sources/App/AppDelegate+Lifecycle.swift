@@ -1,7 +1,7 @@
 import AppKit
 import os.log
 
-internal extension AppDelegate {
+extension AppDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Skip UI initialization in test environment
         let isTestEnvironment = NSClassFromString("XCTestCase") != nil
@@ -41,6 +41,18 @@ internal extension AppDelegate {
         }
         statusItem?.menu = makeStatusMenu()
 
+        if let audioRecorder {
+            FloatingMicrophoneDockManager.shared.configure(
+                recorder: audioRecorder,
+                primaryAction: { [weak self] in
+                    self?.handleFloatingMicrophoneDockPrimaryAction()
+                },
+                openSettingsAction: { [weak self] in
+                    self?.showFloatingMicrophoneDockSettings()
+                }
+            )
+        }
+
         configureShortcutMonitors()
 
         NotificationCenter.default.addObserver(
@@ -54,13 +66,14 @@ internal extension AppDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false // Keep app running in menu bar
+        false  // Keep app running in menu bar
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         Task { await MLDaemonManager.shared.shutdown() }
         recordingAnimationTimer?.cancel()
         recordingAnimationTimer = nil
+        FloatingMicrophoneDockManager.shared.stop()
     }
 
     func hasAPIKey(service: String, account: String) -> Bool {
@@ -69,12 +82,14 @@ internal extension AppDelegate {
 
     /// Pre-load services to eliminate first-use slowness
     private func preloadServices() async {
-        let provider = UserDefaults.standard.string(forKey: AppDefaults.Keys.transcriptionProvider)
+        let provider =
+            UserDefaults.standard.string(forKey: AppDefaults.Keys.transcriptionProvider)
             .flatMap { TranscriptionProvider(rawValue: $0) } ?? AppDefaults.defaultTranscriptionProvider
 
         // Pre-load WhisperKit model if using local provider
         if provider == .local {
-            let selectedModel = UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedWhisperModel)
+            let selectedModel =
+                UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedWhisperModel)
                 .flatMap { WhisperModel(rawValue: $0) } ?? AppDefaults.defaultWhisperModel
 
             if WhisperKitStorage.isModelDownloaded(selectedModel) {
@@ -91,7 +106,8 @@ internal extension AppDelegate {
         }
 
         // Warm up ML daemon if semantic correction is enabled
-        let semanticMode = UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionMode)
+        let semanticMode =
+            UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionMode)
             .flatMap { SemanticCorrectionMode(rawValue: $0) } ?? .off
 
         if semanticMode != .off {
