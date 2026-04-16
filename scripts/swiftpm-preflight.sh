@@ -31,7 +31,9 @@ missing_apple_macro_plugins() {
     fi
   done
 
-  printf '%s\n' "${missing_plugins[@]}"
+  if [ ${#missing_plugins[@]} -gt 0 ]; then
+    printf '%s\n' "${missing_plugins[@]}"
+  fi
 }
 
 swiftpm_can_load_scratch_package() {

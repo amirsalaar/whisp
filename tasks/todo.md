@@ -74,6 +74,23 @@ Result: VoiceFlow now launches an always-available floating microphone dock by d
 
 Result: VoiceFlow no longer greets users with a chain of system permission dialogs on startup. Basic dictation now works from the floating dock with microphone permission only, while Smart Paste and background hotkeys remain opt-in advanced features with clearer guidance.
 
+## Gemma fast local ASR planning
+
+- [x] Research current Gemma audio-capable local models and compare them against VoiceFlow's existing WhisperKit and Parakeet stack.
+- [x] Write a reviewed implementation plan in `tasks/gemma-fast-local-asr-plan.md`.
+- [x] Write a benchmark artifact for go/no-go evaluation under `~/.gstack/projects/amirsalaar-VoiceFlow/`.
+
+Result: recommend `mlx-community/gemma-3n-E2B-it-4bit` as the first Gemma transcription target, but only behind a benchmark-first gate and with hybrid fast-ASR-plus-Gemma routing evaluated before any default or prominent UI rollout.
+
+## Gemma Phase 0 benchmark harness
+
+- [x] Add a repo-native benchmark harness in the test module so it can call internal WhisperKit and Parakeet services without a package refactor.
+- [x] Add a checked-in fixture manifest template plus ignored local fixture and result directories under `Benchmarks/`.
+- [x] Add repeatable wrapper scripts under `tasks/test-commands/` for smoke fixture preparation and benchmark execution.
+- [x] Validate the focused harness tests and an end-to-end smoke run that writes JSON and Markdown output.
+
+Result: Phase 0 benchmark runs are now reproducible via `tasks/test-commands/run-gemma-phase0-benchmark.sh`, with machine-readable output, a readable Markdown summary, and explicit `unimplemented` records for Gemma and hybrid strategies until their runtime paths land.
+
 ## Floating dock visual redesign
 
 - [x] Replace the original cream card dock with a darker capsule-style HUD closer to the Wispr reference.
@@ -92,3 +109,12 @@ Result: the floating dock now opens as a centered bottom HUD, uses a darker caps
 - [x] Verify with `swift build`, focused dock tests, and the full VoiceFlow test suite.
 
 Result: the dock now matches the requested four-state behavior more closely, with a hover-reveal idle prompt, a distinct shortcut-only capture HUD, and a separate full-control recording pill for persistent recording flows.
+
+## Stable local signing for privacy permissions
+
+- [x] Trace the repeated microphone prompt and broken global Fn trigger to macOS privacy permission persistence rather than the recorder or dock logic.
+- [x] Add a reusable signing helper plus a local identity bootstrap script for development builds.
+- [x] Update build, install, and permission reset flows to distinguish stable signing from ad-hoc fallback.
+- [x] Create a stable local VoiceFlow signing identity, reinstall the app, and reset VoiceFlow privacy permissions once.
+
+Result: VoiceFlow is now installed with a stable local signature, so Microphone, Accessibility, and Input Monitoring permissions can persist across rebuilds instead of being reset by ad-hoc installs. The remaining user action is a one-time re-grant of the relevant permissions after the reset.
