@@ -82,3 +82,13 @@ Result: VoiceFlow no longer greets users with a chain of system permission dialo
 - [x] Verify with `swift build`, focused dock tests, and the full VoiceFlow test suite.
 
 Result: the floating dock now opens as a centered bottom HUD, uses a darker capsule treatment in the idle state, and collapses into a compact recording control with separate cancel and stop actions while the full suite stays green.
+
+## Floating dock interaction states
+
+- [x] Collapse the idle dock to a minimal handle until the user hovers it.
+- [x] Expand the idle dock on hover to show the dictation prompt and settings dots.
+- [x] Show a bars-only animated capture pill for hold-shortcut recording.
+- [x] Show the full cancel-plus-stop recording controls for interactive or toggle recording.
+- [x] Verify with `swift build`, focused dock tests, and the full VoiceFlow test suite.
+
+Result: the dock now matches the requested four-state behavior more closely, with a hover-reveal idle prompt, a distinct shortcut-only capture HUD, and a separate full-control recording pill for persistent recording flows.

@@ -19,13 +19,29 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     private override init() {
         super.init()
 
-        viewModel.$status
+        viewModel.$visualStyle
             .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] status in
-                self?.updatePanelLayout(for: status, animated: true)
+            .sink { [weak self] _ in
+                self?.updatePanelLayout(animated: true)
             }
             .store(in: &stateCancellables)
+    }
+
+    func prepareForDockActivation() {
+        viewModel.prepareForDockActivation()
+    }
+
+    func prepareForShortcutActivation(mode: PressAndHoldMode) {
+        viewModel.prepareForShortcutActivation(mode: mode)
+    }
+
+    func handleRecordingStartFailed() {
+        viewModel.handleRecordingStartFailed()
+    }
+
+    func resetInteractionState() {
+        viewModel.resetInteractionState()
     }
 
     func configure(
@@ -156,7 +172,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 
         let panel = FloatingMicrophoneDockPanel(
             contentRect: NSRect(
-                origin: .zero, size: FloatingMicrophoneDockLayout.size(for: viewModel.status)),
+                origin: .zero, size: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -180,11 +196,10 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         panel.orderFrontRegardless()
     }
 
-    private func updatePanelLayout(for status: AppStatus? = nil, animated: Bool) {
+    private func updatePanelLayout(animated: Bool) {
         guard let panel else { return }
 
-        let status = status ?? viewModel.status
-        let size = FloatingMicrophoneDockLayout.size(for: status)
+        let size = FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)
         guard let screen = currentScreen() else { return }
 
         let visibleFrame = screen.visibleFrame

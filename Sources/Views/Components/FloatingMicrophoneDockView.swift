@@ -1,24 +1,44 @@
 import SwiftUI
 
+internal enum FloatingMicrophoneDockVisualStyle: Equatable {
+    case collapsedIdle
+    case expandedIdle
+    case shortcutListening
+    case recordingControls
+}
+
 internal enum FloatingMicrophoneDockLayout {
-    static func size(for status: AppStatus) -> CGSize {
-        switch status {
-        case .recording:
-            return LayoutMetrics.FloatingDock.compactSize
-        default:
+    static func size(for style: FloatingMicrophoneDockVisualStyle) -> CGSize {
+        switch style {
+        case .collapsedIdle:
+            return LayoutMetrics.FloatingDock.collapsedSize
+        case .expandedIdle:
             return LayoutMetrics.FloatingDock.expandedSize
+        case .shortcutListening:
+            return LayoutMetrics.FloatingDock.shortcutCaptureSize
+        case .recordingControls:
+            return LayoutMetrics.FloatingDock.recordingControlsSize
         }
     }
 }
 
 @MainActor
 internal final class FloatingMicrophoneDockViewModel: ObservableObject {
+    private enum RecordingPresentation: Equatable {
+        case shortcutHold
+        case interactive
+    }
+
     @Published private(set) var status: AppStatus = .ready
     @Published private(set) var audioLevel: Float = 0
+    @Published private(set) var visualStyle: FloatingMicrophoneDockVisualStyle = .collapsedIdle
 
     private var isRecording = false
     private var isProcessing = false
     private var hasPermission = true
+    private var isHovering = false
+    private var pendingRecordingPresentation: RecordingPresentation?
+    private var activeRecordingPresentation: RecordingPresentation?
     private var successResetTask: Task<Void, Never>?
     private let successResetDelay: Duration
 
@@ -39,22 +59,38 @@ internal final class FloatingMicrophoneDockViewModel: ObservableObject {
     }
 
     func applyRecorderState(isRecording: Bool, audioLevel: Float, hasPermission: Bool) {
+        let wasRecording = self.isRecording
+
         self.isRecording = isRecording
         self.audioLevel = audioLevel
         self.hasPermission = hasPermission
 
         if isRecording {
+            if let pendingRecordingPresentation {
+                activeRecordingPresentation = pendingRecordingPresentation
+                self.pendingRecordingPresentation = nil
+            } else if activeRecordingPresentation == nil {
+                activeRecordingPresentation = .interactive
+            }
+
             isProcessing = false
             cancelSuccessReset()
+        } else if wasRecording {
+            activeRecordingPresentation = nil
+            pendingRecordingPresentation = nil
         }
 
         refreshStatus()
+        refreshVisualStyle()
     }
 
     func handleTranscriptionStarted() {
         isProcessing = true
+        pendingRecordingPresentation = nil
+        activeRecordingPresentation = nil
         cancelSuccessReset()
         refreshStatus()
+        refreshVisualStyle()
     }
 
     func handleTranscriptionCompleted() {
@@ -62,11 +98,40 @@ internal final class FloatingMicrophoneDockViewModel: ObservableObject {
 
         guard hasPermission else {
             refreshStatus()
+            refreshVisualStyle()
             return
         }
 
         status = .success
+        refreshVisualStyle()
         scheduleSuccessReset()
+    }
+
+    func setHovering(_ isHovering: Bool) {
+        self.isHovering = isHovering
+        refreshVisualStyle()
+    }
+
+    func prepareForShortcutActivation(mode: PressAndHoldMode) {
+        pendingRecordingPresentation = (mode == .hold) ? .shortcutHold : .interactive
+        refreshVisualStyle()
+    }
+
+    func prepareForDockActivation() {
+        pendingRecordingPresentation = .interactive
+        refreshVisualStyle()
+    }
+
+    func handleRecordingStartFailed() {
+        pendingRecordingPresentation = nil
+        activeRecordingPresentation = nil
+        refreshVisualStyle()
+    }
+
+    func resetInteractionState() {
+        pendingRecordingPresentation = nil
+        activeRecordingPresentation = nil
+        refreshVisualStyle()
     }
 
     private func refreshStatus() {
@@ -101,12 +166,37 @@ internal final class FloatingMicrophoneDockViewModel: ObservableObject {
             } else {
                 self.status = .permissionRequired
             }
+
+            self.refreshVisualStyle()
         }
     }
 
     private func cancelSuccessReset() {
         successResetTask?.cancel()
         successResetTask = nil
+    }
+
+    private func refreshVisualStyle() {
+        if let pendingRecordingPresentation {
+            visualStyle =
+                pendingRecordingPresentation == .shortcutHold
+                ? .shortcutListening : .recordingControls
+            return
+        }
+
+        if isRecording {
+            visualStyle =
+                activeRecordingPresentation == .shortcutHold
+                ? .shortcutListening : .recordingControls
+            return
+        }
+
+        if status != .ready {
+            visualStyle = .expandedIdle
+            return
+        }
+
+        visualStyle = isHovering ? .expandedIdle : .collapsedIdle
     }
 }
 
@@ -130,22 +220,35 @@ internal struct FloatingMicrophoneDockView: View {
     private let danger = Color(red: 0.95, green: 0.42, blue: 0.41)
 
     var body: some View {
-        Group {
-            if isRecording {
-                recordingDock
-            } else {
+        ZStack {
+            switch viewModel.visualStyle {
+            case .collapsedIdle:
+                collapsedDock
+            case .expandedIdle:
                 expandedDock
+            case .shortcutListening:
+                shortcutCaptureDock
+            case .recordingControls:
+                recordingDock
             }
         }
         .frame(
-            width: FloatingMicrophoneDockLayout.size(for: viewModel.status).width,
-            height: FloatingMicrophoneDockLayout.size(for: viewModel.status).height
+            width: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle).width,
+            height: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle).height
         )
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isRecording)
+        .contentShape(Rectangle())
+        .onHover { isHovering in
+            viewModel.setHovering(isHovering)
+        }
+        .animation(.spring(response: 0.24, dampingFraction: 0.88), value: viewModel.visualStyle)
         .animation(.easeInOut(duration: 0.18), value: viewModel.status)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
+    }
+
+    private var collapsedDock: some View {
+        dotsPill
     }
 
     private var expandedDock: some View {
@@ -157,29 +260,23 @@ internal struct FloatingMicrophoneDockView: View {
                     .lineLimit(1)
                     .padding(.horizontal, 18)
                     .frame(minWidth: 300)
-                    .frame(height: 42)
+                    .frame(height: 44)
                     .background(capsuleBackground)
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.isPrimaryActionEnabled)
             .help(primaryButtonHelp)
 
-            Button(action: onSettingsAction) {
-                HStack(spacing: 4) {
-                    ForEach(0..<8, id: \.self) { _ in
-                        Circle()
-                            .fill(mutedText)
-                            .frame(width: 3, height: 3)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 28)
-                .background(smallCapsuleBackground)
-            }
-            .buttonStyle(.plain)
-            .help("Open VoiceFlow settings")
+            dotsPill
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var shortcutCaptureDock: some View {
+        DockWaveformView(audioLevel: viewModel.audioLevel, barCount: 10, tint: text)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .background(capsuleBackground)
     }
 
     private var recordingDock: some View {
@@ -197,7 +294,7 @@ internal struct FloatingMicrophoneDockView: View {
             .buttonStyle(.plain)
             .help("Cancel dictation")
 
-            waveform
+            DockWaveformView(audioLevel: viewModel.audioLevel, barCount: 10, tint: text)
 
             Button(action: onPrimaryAction) {
                 ZStack {
@@ -243,22 +340,21 @@ internal struct FloatingMicrophoneDockView: View {
             .shadow(color: .black.opacity(0.22), radius: 10, y: 6)
     }
 
-    private var waveform: some View {
-        HStack(alignment: .center, spacing: 3) {
-            ForEach(0..<10, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(text)
-                    .frame(width: 3, height: barHeight(for: index))
+    private var dotsPill: some View {
+        Button(action: onSettingsAction) {
+            HStack(spacing: 4) {
+                ForEach(0..<10, id: \.self) { _ in
+                    Circle()
+                        .fill(mutedText)
+                        .frame(width: 2.5, height: 2.5)
+                }
             }
+            .padding(.horizontal, 14)
+            .frame(height: 28)
+            .background(smallCapsuleBackground)
         }
-        .frame(width: 58, height: 24)
-    }
-
-    private func barHeight(for index: Int) -> CGFloat {
-        let level = max(0.12, CGFloat(viewModel.audioLevel))
-        let waveformPattern: [CGFloat] = [0.28, 0.46, 0.72, 0.94, 0.78, 0.52, 0.36, 0.68, 0.88, 0.58]
-        let amplitude = waveformPattern[index % waveformPattern.count]
-        return 5 + (level * amplitude * 11)
+        .buttonStyle(.plain)
+        .help("Open VoiceFlow settings")
     }
 
     private var selectedPressAndHoldKey: PressAndHoldKey {
@@ -343,8 +439,39 @@ internal struct FloatingMicrophoneDockView: View {
         case .processing:
             return "VoiceFlow is currently processing audio."
         default:
-            return "Click the main pill to start dictation. Use the smaller pill for settings."
+            return
+                "Hover to expand the dock. Click the main pill to start dictation, or use the smaller pill for settings."
         }
+    }
+}
+
+private struct DockWaveformView: View {
+    let audioLevel: Float
+    let barCount: Int
+    let tint: Color
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+
+            HStack(alignment: .center, spacing: 3) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(tint)
+                        .frame(width: 3, height: barHeight(for: index, time: time))
+                }
+            }
+            .frame(width: CGFloat(barCount * 5 + 10), height: 24)
+        }
+    }
+
+    private func barHeight(for index: Int, time: TimeInterval) -> CGFloat {
+        let normalizedLevel = max(0.08, min(CGFloat(audioLevel), 1))
+        let pattern: [CGFloat] = [0.24, 0.42, 0.68, 0.92, 0.78, 0.54, 0.36, 0.62, 0.86, 0.58]
+        let phase = CGFloat((sin((time * 7) + (Double(index) * 0.8)) + 1) / 2)
+        let animatedLift = 1.5 + (phase * 5)
+        let voiceLift = normalizedLevel * pattern[index % pattern.count] * 10
+        return 5 + animatedLift + voiceLift
     }
 }
 

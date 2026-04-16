@@ -3,6 +3,11 @@ import ApplicationServices
 import os.log
 
 extension AppDelegate {
+    private enum RecordingTriggerOrigin {
+        case shortcut(PressAndHoldMode)
+        case dock
+    }
+
     func configureShortcutMonitors() {
         stopShortcutMonitors()
 
@@ -86,12 +91,12 @@ extension AppDelegate {
     private func handlePressAndHoldKeyDown() {
         switch pressAndHoldConfiguration.mode {
         case .hold:
-            startRecordingFromPressAndHold()
+            startRecordingFromPressAndHold(origin: .shortcut(.hold))
         case .toggle:
             if audioRecorder?.isRecording == true {
                 stopRecordingFromPressAndHold()
             } else {
-                startRecordingFromPressAndHold()
+                startRecordingFromPressAndHold(origin: .shortcut(.toggle))
             }
         }
     }
@@ -105,7 +110,7 @@ extension AppDelegate {
         if audioRecorder?.isRecording == true {
             stopRecordingFromPressAndHold()
         } else {
-            startRecordingFromPressAndHold()
+            startRecordingFromPressAndHold(origin: .dock)
         }
     }
 
@@ -113,6 +118,7 @@ extension AppDelegate {
         guard let recorder = audioRecorder else { return }
 
         pressAndHoldTriggerState.reset()
+        FloatingMicrophoneDockManager.shared.resetInteractionState()
 
         if recorder.isRecording {
             recorder.cancelRecording()
@@ -126,7 +132,7 @@ extension AppDelegate {
         DashboardWindowManager.shared.showDashboardWindow(selectedNav: selectedNav)
     }
 
-    private func startRecordingFromPressAndHold() {
+    private func startRecordingFromPressAndHold(origin: RecordingTriggerOrigin) {
         guard let recorder = audioRecorder else { return }
 
         switch pressAndHoldTriggerState.handleKeyDown(
@@ -140,6 +146,13 @@ extension AppDelegate {
             break
         }
 
+        switch origin {
+        case .shortcut(let mode):
+            FloatingMicrophoneDockManager.shared.prepareForShortcutActivation(mode: mode)
+        case .dock:
+            FloatingMicrophoneDockManager.shared.prepareForDockActivation()
+        }
+
         Task { @MainActor in
             let success = await recorder.startRecording()
 
@@ -149,8 +162,10 @@ extension AppDelegate {
                 SoundManager().playRecordingStartSound()
             case .cancelStartedRecording:
                 recorder.cancelRecording()
+                FloatingMicrophoneDockManager.shared.resetInteractionState()
                 resetToIdleState()
             case .startFailed:
+                FloatingMicrophoneDockManager.shared.handleRecordingStartFailed()
                 Logger.app.warning("Failed to start recording from press-and-hold")
             case .noOp:
                 break
@@ -175,12 +190,14 @@ extension AppDelegate {
         guard let recorder = audioRecorder else {
             Logger.app.error("No audioRecorder available")
             pressAndHoldTriggerState.reset()
+            FloatingMicrophoneDockManager.shared.resetInteractionState()
             return
         }
 
         guard recorder.isRecording else {
             Logger.app.error("Recorder not recording")
             pressAndHoldTriggerState.reset()
+            FloatingMicrophoneDockManager.shared.resetInteractionState()
             return
         }
 

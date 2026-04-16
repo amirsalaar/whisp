@@ -4,6 +4,40 @@ import XCTest
 
 @MainActor
 final class FloatingMicrophoneDockViewModelTests: XCTestCase {
+    func testReadyStateStartsCollapsedAndExpandsOnHover() {
+        let viewModel = FloatingMicrophoneDockViewModel(successResetDelay: .milliseconds(10))
+
+        XCTAssertEqual(viewModel.visualStyle, .collapsedIdle)
+
+        viewModel.setHovering(true)
+
+        XCTAssertEqual(viewModel.visualStyle, .expandedIdle)
+    }
+
+    func testHoldShortcutUsesBarsOnlyPresentation() {
+        let viewModel = FloatingMicrophoneDockViewModel(successResetDelay: .milliseconds(10))
+
+        viewModel.prepareForShortcutActivation(mode: .hold)
+
+        XCTAssertEqual(viewModel.visualStyle, .shortcutListening)
+
+        viewModel.applyRecorderState(isRecording: true, audioLevel: 0.5, hasPermission: true)
+
+        XCTAssertEqual(viewModel.visualStyle, .shortcutListening)
+    }
+
+    func testToggleShortcutUsesInteractiveRecordingControls() {
+        let viewModel = FloatingMicrophoneDockViewModel(successResetDelay: .milliseconds(10))
+
+        viewModel.prepareForShortcutActivation(mode: .toggle)
+
+        XCTAssertEqual(viewModel.visualStyle, .recordingControls)
+
+        viewModel.applyRecorderState(isRecording: true, audioLevel: 0.5, hasPermission: true)
+
+        XCTAssertEqual(viewModel.visualStyle, .recordingControls)
+    }
+
     func testPermissionRequiredWhenRecorderCannotAccessMicrophone() {
         let viewModel = FloatingMicrophoneDockViewModel(successResetDelay: .milliseconds(10))
 
