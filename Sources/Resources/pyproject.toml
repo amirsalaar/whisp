@@ -4,8 +4,10 @@ version = "0.0.0"
 description = "Runtime dependencies for Whisp"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-  # Gemma 4 multimodal (audio transcription via MLX); pulls in mlx-lm transitively
+  # Gemma 4 multimodal (audio transcription via MLX)
   "mlx-vlm>=0.4.4, <0.5.0",
+  # Semantic correction (also a transitive dep of mlx-vlm, but imported directly)
+  "mlx-lm>=0.22.0",
 
   # Parakeet and audio toolchain; pin transitive deps to Py3.11-compatible wheels
   "parakeet-mlx>=0.3.5, <0.4.0",

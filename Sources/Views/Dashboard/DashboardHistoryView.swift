@@ -21,15 +21,15 @@ internal struct DashboardHistoryView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 14) {
+            Image(systemName: "text.book.closed")
+                .font(.system(size: 40, weight: .ultraLight))
+                .foregroundStyle(.quaternary)
             Text("No transcriptions yet")
-                .font(.headline)
+                .font(.system(size: 15, weight: .medium, design: .serif))
             Text("Your transcription history will appear here.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
