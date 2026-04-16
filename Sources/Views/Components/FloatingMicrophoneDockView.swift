@@ -220,7 +220,8 @@ internal struct FloatingMicrophoneDockView: View {
     private let handleStroke = Color.white.opacity(0.72)
     private let handleFill = Color.white.opacity(0.06)
     private let subtleFill = Color.white.opacity(0.08)
-    private let danger = Color(red: 0.95, green: 0.42, blue: 0.41)
+    private let brandWarm = Color(red: 0.90, green: 0.68, blue: 0.24)
+    private let danger = Color(red: 0.88, green: 0.35, blue: 0.28)
 
     var body: some View {
         ZStack {
@@ -292,7 +293,7 @@ internal struct FloatingMicrophoneDockView: View {
         DockWaveformView(
             audioLevel: viewModel.audioLevel,
             barCount: 7,
-            tint: handleStroke,
+            tint: brandWarm,
             barWidth: 2,
             spacing: 2,
             frameHeight: 12,
@@ -320,7 +321,7 @@ internal struct FloatingMicrophoneDockView: View {
             .buttonStyle(.plain)
             .help("Cancel dictation")
 
-            DockWaveformView(audioLevel: viewModel.audioLevel, barCount: 10, tint: text)
+            DockWaveformView(audioLevel: viewModel.audioLevel, barCount: 10, tint: brandWarm)
 
             Button(action: onPrimaryAction) {
                 ZStack {

@@ -86,6 +86,7 @@ def _split_audio_wav(
         tmp = tempfile.NamedTemporaryFile(
             suffix=".wav", delete=False, prefix="gemma_chunk_"
         )
+        tmp.close()
         with wave.open(tmp.name, "wb") as out:
             out.setnchannels(n_channels)
             out.setsampwidth(sampwidth)
