@@ -245,6 +245,7 @@ internal struct FloatingMicrophoneDockView: View {
         }
         .animation(.spring(response: 0.24, dampingFraction: 0.88), value: viewModel.visualStyle)
         .animation(.easeInOut(duration: 0.18), value: viewModel.status)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)

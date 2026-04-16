@@ -12,6 +12,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     private var notificationObservers: [NSObjectProtocol] = []
     private var userDefaultsObserver: NSObjectProtocol?
     private weak var panel: FloatingMicrophoneDockPanel?
+    private weak var passthroughContainer: DockPassthroughView?
     private var primaryAction: (() -> Void)?
     private var cancelAction: (() -> Void)?
     private var openSettingsAction: (() -> Void)?
@@ -22,8 +23,8 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         viewModel.$visualStyle
             .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updatePanelLayout(animated: true)
+            .sink { [weak self] style in
+                self?.passthroughContainer?.activeContentSize = FloatingMicrophoneDockLayout.size(for: style)
             }
             .store(in: &stateCancellables)
     }
@@ -63,7 +64,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     }
 
     func refreshPositionIfNeeded() {
-        updatePanelLayout(animated: false)
+        updatePanelPosition()
     }
 
     func stop() {
@@ -81,6 +82,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 
         panel?.close()
         panel = nil
+        passthroughContainer = nil
     }
 
     private func bindRecorder(_ recorder: AudioRecorder) {
@@ -149,7 +151,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 
         if let panel {
             panel.orderFrontRegardless()
-            updatePanelLayout(animated: false)
+            updatePanelPosition()
             return
         }
 
@@ -157,6 +159,8 @@ internal final class FloatingMicrophoneDockManager: NSObject {
     }
 
     private func showPanel() {
+        let maxSize = LayoutMetrics.FloatingDock.expandedSize
+
         let dockView = FloatingMicrophoneDockView(
             viewModel: viewModel,
             onPrimaryAction: { [weak self] in
@@ -170,15 +174,16 @@ internal final class FloatingMicrophoneDockManager: NSObject {
             }
         )
         let hostingView = NSHostingView(rootView: dockView)
-        hostingView.frame = NSRect(
-            origin: .zero,
-            size: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)
-        )
+        hostingView.frame = NSRect(origin: .zero, size: maxSize)
         hostingView.autoresizingMask = [.width, .height]
 
+        let container = DockPassthroughView(frame: NSRect(origin: .zero, size: maxSize))
+        container.addSubview(hostingView)
+        container.activeContentSize = FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)
+        self.passthroughContainer = container
+
         let panel = FloatingMicrophoneDockPanel(
-            contentRect: NSRect(
-                origin: .zero, size: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)),
+            contentRect: NSRect(origin: .zero, size: maxSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -195,26 +200,26 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         panel.isMovableByWindowBackground = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.contentView = hostingView
+        panel.contentView = container
 
         self.panel = panel
-        updatePanelLayout(animated: false)
+        updatePanelPosition()
         panel.orderFrontRegardless()
     }
 
-    private func updatePanelLayout(animated: Bool) {
+    private func updatePanelPosition() {
         guard let panel else { return }
 
-        let size = FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)
+        let maxSize = LayoutMetrics.FloatingDock.expandedSize
         guard let screen = currentScreen() else { return }
 
         let visibleFrame = screen.visibleFrame
         let origin = CGPoint(
-            x: visibleFrame.midX - (size.width / 2),
+            x: visibleFrame.midX - (maxSize.width / 2),
             y: visibleFrame.minY + LayoutMetrics.FloatingDock.bottomOffset
         )
 
-        panel.setFrame(NSRect(origin: origin, size: size), display: true, animate: animated)
+        panel.setFrame(NSRect(origin: origin, size: maxSize), display: false, animate: false)
     }
 
     private func currentScreen() -> NSScreen? {
@@ -234,4 +239,22 @@ internal final class FloatingMicrophoneDockManager: NSObject {
 private final class FloatingMicrophoneDockPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+private final class DockPassthroughView: NSView {
+    var activeContentSize: CGSize = .zero
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+
+        let hitRect = NSRect(
+            x: (bounds.width - activeContentSize.width) / 2,
+            y: 0,
+            width: activeContentSize.width,
+            height: activeContentSize.height
+        )
+
+        guard hitRect.contains(localPoint) else { return nil }
+        return super.hitTest(point)
+    }
 }
