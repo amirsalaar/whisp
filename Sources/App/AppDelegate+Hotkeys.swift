@@ -36,7 +36,9 @@ extension AppDelegate {
 
         pressAndHoldMonitor = monitor
         if !monitor.start() {
-            requestAccessibilityPermissionAndRestart(monitor)
+            Logger.app.info(
+                "Press-and-hold monitor not started because Accessibility permission is not granted. VoiceFlow will keep the floating dock available and wait for explicit permission setup."
+            )
         }
     }
 
@@ -81,22 +83,6 @@ extension AppDelegate {
         }
     }
 
-    private func requestAccessibilityPermissionAndRestart(_ monitor: PressAndHoldKeyMonitor) {
-        let checkOptionPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [checkOptionPrompt: true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
-
-        Task { @MainActor in
-            for _ in 0..<120 {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                if AXIsProcessTrusted() {
-                    monitor.start()
-                    break
-                }
-            }
-        }
-    }
-
     private func handlePressAndHoldKeyDown() {
         switch pressAndHoldConfiguration.mode {
         case .hold:
@@ -116,23 +102,7 @@ extension AppDelegate {
     }
 
     func handleFloatingMicrophoneDockPrimaryAction() {
-        guard let recorder = audioRecorder else { return }
-
-        guard recorder.hasPermission else {
-            recorder.requestMicrophonePermission()
-
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(300))
-                if recorder.hasPermission {
-                    return
-                }
-
-                showFloatingMicrophoneDockSettings()
-            }
-            return
-        }
-
-        if recorder.isRecording {
+        if audioRecorder?.isRecording == true {
             stopRecordingFromPressAndHold()
         } else {
             startRecordingFromPressAndHold()
@@ -148,8 +118,7 @@ extension AppDelegate {
         guard let recorder = audioRecorder else { return }
 
         switch pressAndHoldTriggerState.handleKeyDown(
-            recorderIsRecording: recorder.isRecording,
-            hasPermission: recorder.hasPermission
+            recorderIsRecording: recorder.isRecording
         ) {
         case .ignore:
             return
@@ -170,7 +139,6 @@ extension AppDelegate {
                 recorder.cancelRecording()
                 resetToIdleState()
             case .startFailed:
-                // Silent failure - just don't start recording
                 Logger.app.warning("Failed to start recording from press-and-hold")
             case .noOp:
                 break

@@ -6,7 +6,7 @@ final class PressAndHoldTriggerStateTests: XCTestCase {
     func testKeyDownBeginsAsyncStartWhenIdleAndPermitted() {
         var state = PressAndHoldTriggerState()
 
-        let action = state.handleKeyDown(recorderIsRecording: false, hasPermission: true)
+        let action = state.handleKeyDown(recorderIsRecording: false)
 
         XCTAssertEqual(action, .beginAsyncStart)
         XCTAssertTrue(state.isPressed)
@@ -15,7 +15,7 @@ final class PressAndHoldTriggerStateTests: XCTestCase {
 
     func testKeyUpWhileStartPendingWaitsForStartupAndCancelsOnSuccess() {
         var state = PressAndHoldTriggerState()
-        _ = state.handleKeyDown(recorderIsRecording: false, hasPermission: true)
+        _ = state.handleKeyDown(recorderIsRecording: false)
 
         let keyUpAction = state.handleKeyUp()
         let completionAction = state.handleStartCompletion(success: true)
@@ -28,7 +28,7 @@ final class PressAndHoldTriggerStateTests: XCTestCase {
 
     func testStartCompletionMarksRecordingStartedWhenKeyStillHeld() {
         var state = PressAndHoldTriggerState()
-        _ = state.handleKeyDown(recorderIsRecording: false, hasPermission: true)
+        _ = state.handleKeyDown(recorderIsRecording: false)
 
         let completionAction = state.handleStartCompletion(success: true)
 
@@ -40,7 +40,7 @@ final class PressAndHoldTriggerStateTests: XCTestCase {
     func testKeyDownKeepsExistingRecordingActive() {
         var state = PressAndHoldTriggerState()
 
-        let action = state.handleKeyDown(recorderIsRecording: true, hasPermission: true)
+        let action = state.handleKeyDown(recorderIsRecording: true)
         let keyUpAction = state.handleKeyUp()
 
         XCTAssertEqual(action, .keepExistingRecording)
@@ -49,12 +49,22 @@ final class PressAndHoldTriggerStateTests: XCTestCase {
 
     func testStartFailureResetsState() {
         var state = PressAndHoldTriggerState()
-        _ = state.handleKeyDown(recorderIsRecording: false, hasPermission: true)
+        _ = state.handleKeyDown(recorderIsRecording: false)
 
         let completionAction = state.handleStartCompletion(success: false)
 
         XCTAssertEqual(completionAction, .startFailed)
         XCTAssertFalse(state.isPressed)
         XCTAssertFalse(state.isStartPending)
+    }
+
+    func testKeyDownBeginsAsyncStartEvenWhenMicrophonePermissionWillBeRequestedLater() {
+        var state = PressAndHoldTriggerState()
+
+        let action = state.handleKeyDown(recorderIsRecording: false)
+
+        XCTAssertEqual(action, .beginAsyncStart)
+        XCTAssertTrue(state.isPressed)
+        XCTAssertTrue(state.isStartPending)
     }
 }

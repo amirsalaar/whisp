@@ -209,7 +209,7 @@ internal struct FloatingMicrophoneDockView: View {
         case .downloadingModel(let message):
             return message
         case .ready:
-            return "Click to record"
+            return "Click to start dictation"
         }
     }
 
@@ -222,13 +222,13 @@ internal struct FloatingMicrophoneDockView: View {
         case .success:
             return "Ready for the next dictation."
         case .permissionRequired:
-            return "Click to request access, or open settings."
+            return "Click once to grant mic access. Hotkeys and Smart Paste are optional later."
         case .error:
             return "Open settings to inspect the current setup."
         case .downloadingModel:
             return "Model downloads continue while the dock stays available."
         case .ready:
-            return "Works across apps and all Spaces."
+            return "Start with the dock. Add hotkeys or Smart Paste later in Settings."
         }
     }
 

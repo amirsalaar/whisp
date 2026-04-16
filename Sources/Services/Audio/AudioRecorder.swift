@@ -15,6 +15,8 @@ internal class AudioRecorder: NSObject, ObservableObject {
     private let volumeManager: MicrophoneVolumeManager
     private let recorderFactory: (URL, [String: Any]) throws -> AVAudioRecorder
     private let dateProvider: () -> Date
+    private let authorizationStatusProvider: () -> AVAuthorizationStatus
+    private let permissionRequester: (@escaping @Sendable (Bool) -> Void) -> Void
     private(set) var currentSessionStart: Date?
     private(set) var lastRecordingDuration: TimeInterval?
 
@@ -26,6 +28,15 @@ internal class AudioRecorder: NSObject, ObservableObject {
         self.volumeManager = MicrophoneVolumeManager.shared
         self.recorderFactory = { url, settings in try AVAudioRecorder(url: url, settings: settings) }
         self.dateProvider = { Date() }
+        self.authorizationStatusProvider = { AVCaptureDevice.authorizationStatus(for: .audio) }
+        self.permissionRequester = { completion in
+            guard !AppEnvironment.isRunningTests else {
+                completion(false)
+                return
+            }
+
+            AVCaptureDevice.requestAccess(for: .audio, completionHandler: completion)
+        }
         super.init()
         setupRecorder()
         checkMicrophonePermission()
@@ -34,11 +45,24 @@ internal class AudioRecorder: NSObject, ObservableObject {
     init(
         volumeManager: MicrophoneVolumeManager = .shared,
         recorderFactory: @escaping (URL, [String: Any]) throws -> AVAudioRecorder,
-        dateProvider: @escaping () -> Date = { Date() }
+        dateProvider: @escaping () -> Date = { Date() },
+        authorizationStatusProvider: @escaping () -> AVAuthorizationStatus = {
+            AVCaptureDevice.authorizationStatus(for: .audio)
+        },
+        permissionRequester: @escaping (@escaping @Sendable (Bool) -> Void) -> Void = { completion in
+            guard !AppEnvironment.isRunningTests else {
+                completion(false)
+                return
+            }
+
+            AVCaptureDevice.requestAccess(for: .audio, completionHandler: completion)
+        }
     ) {
         self.volumeManager = volumeManager
         self.recorderFactory = recorderFactory
         self.dateProvider = dateProvider
+        self.authorizationStatusProvider = authorizationStatusProvider
+        self.permissionRequester = permissionRequester
         super.init()
         setupRecorder()
         checkMicrophonePermission()
@@ -49,36 +73,20 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
     
     func checkMicrophonePermission() {
-        let permissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        let permissionStatus = authorizationStatusProvider()
         
         switch permissionStatus {
         case .authorized:
             self.hasPermission = true
-        case .denied, .restricted:
+        case .denied, .restricted, .notDetermined:
             self.hasPermission = false
-        case .notDetermined:
-            // Never trigger a real system permission prompt in unit tests.
-            guard !AppEnvironment.isRunningTests else {
-                self.hasPermission = false
-                return
-            }
-            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                Task { @MainActor [weak self] in
-                    self?.hasPermission = granted
-                }
-            }
         @unknown default:
             self.hasPermission = false
         }
     }
     
     func requestMicrophonePermission() {
-        // Never trigger a real system permission prompt in unit tests.
-        guard !AppEnvironment.isRunningTests else {
-            hasPermission = false
-            return
-        }
-        AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+        permissionRequester { [weak self] granted in
             Task { @MainActor [weak self] in
                 self?.hasPermission = granted
             }
@@ -94,8 +102,8 @@ internal class AudioRecorder: NSObject, ObservableObject {
         }
         lastRecordingAttempt = now
 
-        // Check permission first
-        guard hasPermission else {
+        // Check permission on demand instead of prompting during app launch.
+        guard await ensureMicrophonePermission() else {
             return false
         }
 
@@ -147,6 +155,28 @@ internal class AudioRecorder: NSObject, ObservableObject {
             }
             // Recheck permissions if recording failed
             checkMicrophonePermission()
+            return false
+        }
+    }
+
+    private func ensureMicrophonePermission() async -> Bool {
+        switch authorizationStatusProvider() {
+        case .authorized:
+            hasPermission = true
+            return true
+        case .notDetermined:
+            let granted = await withCheckedContinuation { continuation in
+                permissionRequester { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+            hasPermission = granted
+            return granted
+        case .denied, .restricted:
+            hasPermission = false
+            return false
+        @unknown default:
+            hasPermission = false
             return false
         }
     }

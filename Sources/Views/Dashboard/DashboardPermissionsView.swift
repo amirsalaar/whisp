@@ -44,7 +44,9 @@ internal struct DashboardPermissionsView: View {
             } header: {
                 Text("Microphone")
             } footer: {
-                Text("VoiceFlow needs microphone access to record audio for transcription.")
+                Text(
+                    "Microphone access is the only permission required to start dictating. Accessibility and Input Monitoring are optional for Smart Paste and background hotkeys."
+                )
             }
 
             if needsAccessibility {
@@ -166,7 +168,7 @@ internal struct DashboardPermissionsView: View {
             return "Required for Command, Option, or Control press-and-hold detection."
         }
 
-        return "Required for Smart Paste to type into other apps."
+        return "Optional. Required only for Smart Paste to type into other apps."
     }
 
     private func permissionLabel(isGranted: Bool, grantedText: String, requiredText: String) -> some View {

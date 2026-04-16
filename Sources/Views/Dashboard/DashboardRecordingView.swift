@@ -87,7 +87,7 @@ internal struct DashboardRecordingView: View {
                 Text("Press & Hold")
             } footer: {
                 Text(
-                    "Command, Option, and Control require Accessibility permission to work in other apps. Fn / Globe uses Input Monitoring, may require Keyboard > Press Globe key to Do Nothing, and may need a VoiceFlow restart after permission changes."
+                    "Hotkeys are optional. The floating dock can start dictation with microphone access only. Command, Option, and Control require Accessibility permission to work in other apps. Fn / Globe uses Input Monitoring, may require Keyboard > Press Globe key to Do Nothing, and may need a VoiceFlow restart after permission changes."
                 )
             }
         }

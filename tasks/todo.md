@@ -63,3 +63,13 @@ Result: VoiceFlow now keeps the dedicated global Fn / Globe event-tap path, igno
 - [x] Verify with `swift build`, focused dock/hotkey tests, the full suite, and `make build`.
 
 Result: VoiceFlow now launches an always-available floating microphone dock by default, keeps it synchronized with live recorder/transcription state, lets users disable it from General settings, and builds cleanly in both debug and packaged app flows.
+
+## Permission and first-use UX cleanup
+
+- [x] Remove automatic microphone, Accessibility, and Input Monitoring prompts from app launch.
+- [x] Request microphone access only when the user actually starts dictation, and continue straight into recording if they grant it.
+- [x] Keep Smart Paste and hotkey permissions explicit and clearly labeled as optional in Settings and the floating dock copy.
+- [x] Add regression coverage for microphone-on-first-use and the updated press-and-hold start path.
+- [x] Verify with focused recorder/hotkey tests, the full suite, and `make build`.
+
+Result: VoiceFlow no longer greets users with a chain of system permission dialogs on startup. Basic dictation now works from the floating dock with microphone permission only, while Smart Paste and background hotkeys remain opt-in advanced features with clearer guidance.

@@ -25,9 +25,6 @@ extension AppDelegate {
 
         AppSetupHelper.setupApp()
 
-        // Check permissions at startup
-        PermissionChecker.checkAndPromptForPermissions()
-
         audioRecorder = AudioRecorder()
 
         // Pre-load services to eliminate first-use slowness

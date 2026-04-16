@@ -23,15 +23,11 @@ internal struct PressAndHoldTriggerState {
     private(set) var isPressed = false
     private(set) var isStartPending = false
 
-    mutating func handleKeyDown(recorderIsRecording: Bool, hasPermission: Bool) -> KeyDownAction {
+    mutating func handleKeyDown(recorderIsRecording: Bool) -> KeyDownAction {
         if recorderIsRecording {
             isPressed = true
             isStartPending = false
             return .keepExistingRecording
-        }
-
-        guard hasPermission else {
-            return .ignore
         }
 
         guard !isPressed, !isStartPending else {
