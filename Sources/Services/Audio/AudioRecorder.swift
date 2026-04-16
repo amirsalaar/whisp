@@ -1,6 +1,6 @@
-import Foundation
 import AVFoundation
 import Combine
+import Foundation
 import os.log
 
 @MainActor
@@ -8,7 +8,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var audioLevel: Float = 0.0
     @Published var hasPermission = false
-    
+
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
     private var levelUpdateTimer: Timer?
@@ -23,7 +23,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
     // Debouncing to prevent rapid recording starts
     private var lastRecordingAttempt: Date?
     private let debounceInterval: TimeInterval = 0.2  // 200ms debounce window
-    
+
     override init() {
         self.volumeManager = MicrophoneVolumeManager.shared
         self.recorderFactory = { url, settings in try AVAudioRecorder(url: url, settings: settings) }
@@ -67,14 +67,14 @@ internal class AudioRecorder: NSObject, ObservableObject {
         setupRecorder()
         checkMicrophonePermission()
     }
-    
+
     private func setupRecorder() {
         // AVAudioSession is not needed on macOS
     }
-    
+
     func checkMicrophonePermission() {
         let permissionStatus = authorizationStatusProvider()
-        
+
         switch permissionStatus {
         case .authorized:
             self.hasPermission = true
@@ -84,7 +84,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
             self.hasPermission = false
         }
     }
-    
+
     func requestMicrophonePermission() {
         permissionRequester { [weak self] granted in
             Task { @MainActor [weak self] in
@@ -92,7 +92,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
             }
         }
     }
-    
+
     func startRecording() async -> Bool {
         // Debounce rapid recording attempts
         let now = dateProvider()
@@ -111,29 +111,29 @@ internal class AudioRecorder: NSObject, ObservableObject {
         guard audioRecorder == nil else {
             return false
         }
-        
+
         // Boost microphone volume if enabled (await to ensure it completes before recording)
         if UserDefaults.standard.autoBoostMicrophoneVolume {
             _ = await volumeManager.boostMicrophoneVolume()
         }
-        
+
         let tempPath = FileManager.default.temporaryDirectory
         let timestamp = dateProvider().timeIntervalSince1970
         let audioFilename = tempPath.appendingPathComponent("recording_\(timestamp).m4a")
-        
+
         recordingURL = audioFilename
-        
+
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44100,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
-        
+
         // Note: On macOS, microphone selection is handled at the system level
         // The AVAudioRecorder will use the system's default input device
         // Users can change this in System Preferences > Sound > Input
-        
+
         do {
             audioRecorder = try recorderFactory(audioFilename, settings)
             audioRecorder?.delegate = self
@@ -141,7 +141,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
             audioRecorder?.record()
             currentSessionStart = dateProvider()
             lastRecordingDuration = nil
-            
+
             self.isRecording = true
             self.startLevelMonitoring()
             return true
@@ -180,7 +180,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
             return false
         }
     }
-    
+
     func stopRecording() async -> URL? {
         let now = dateProvider()
         let sessionDuration = currentSessionStart.map { now.timeIntervalSince($0) }
@@ -207,10 +207,10 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
         return recordingURL
     }
-    
+
     func cleanupRecording() {
         guard let url = recordingURL else { return }
-        
+
         // Restore microphone volume if it was boosted (in case of cancellation/cleanup)
         if UserDefaults.standard.autoBoostMicrophoneVolume {
             Task {
@@ -220,38 +220,38 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
         currentSessionStart = nil
         lastRecordingDuration = nil
-        
+
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
             Logger.audioRecorder.error("Failed to cleanup recording file: \(error.localizedDescription)")
         }
-        
+
         recordingURL = nil
     }
-    
+
     func cancelRecording() {
         // Stop recording and cleanup without returning URL
         audioRecorder?.stop()
         audioRecorder = nil
         currentSessionStart = nil
         lastRecordingDuration = nil
-        
+
         // Restore microphone volume if it was boosted
         if UserDefaults.standard.autoBoostMicrophoneVolume {
             Task {
                 await volumeManager.restoreMicrophoneVolume()
             }
         }
-        
+
         // Update @Published properties on main thread
         self.isRecording = false
         self.stopLevelMonitoring()
-        
+
         // Clean up the recording file
         cleanupRecording()
     }
-    
+
     private func startLevelMonitoring() {
         // Use a more efficient approach for macOS
         levelUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -265,18 +265,18 @@ internal class AudioRecorder: NSObject, ObservableObject {
             }
         }
     }
-    
+
     private func stopLevelMonitoring() {
         levelUpdateTimer?.invalidate()
         levelUpdateTimer = nil
         audioLevel = 0.0
     }
-    
+
     private func normalizeLevel(_ level: Float) -> Float {
         // Convert dB to linear scale (0.0 to 1.0)
         let minDb: Float = -60.0
         let maxDb: Float = 0.0
-        
+
         let clampedLevel = max(minDb, min(maxDb, level))
         return (clampedLevel - minDb) / (maxDb - minDb)
     }
