@@ -5,7 +5,7 @@ internal struct PermissionEducationModal: View {
     let onCancel: () -> Void
     
     private var enableSmartPaste: Bool {
-        UserDefaults.standard.bool(forKey: "enableSmartPaste")
+        UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
     }
     
     var body: some View {

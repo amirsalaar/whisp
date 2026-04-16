@@ -3,6 +3,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import Observation
+import os.log
 
 // Cancellation token to prevent race condition in async callbacks
 private final class CancellationToken: @unchecked Sendable {
@@ -79,15 +80,17 @@ internal class PasteManager {
     /// Returns `true` if paste succeeded, `false` if it failed (accessibility denied, etc.).
     @discardableResult
     func pasteToActiveApp() -> Bool {
-        let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+        let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
 
         guard enableSmartPaste else {
-            // SmartPaste disabled — text is already on clipboard
+            Logger.app.debug("SmartPaste: disabled in settings, skipping paste")
             return false
         }
 
-        // Use CGEvent to simulate ⌘V
-        return performCGEventPaste()
+        Logger.app.debug("SmartPaste: enabled, attempting CGEvent paste")
+        let result = performCGEventPaste()
+        Logger.app.debug("SmartPaste: CGEvent paste result=\(result)")
+        return result
     }
     
     /// SmartPaste function that attempts to paste text into a specific application
@@ -98,7 +101,7 @@ internal class PasteManager {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         
-        let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+        let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
         
         guard enableSmartPaste else {
             // SmartPaste is disabled in settings - fail with appropriate error

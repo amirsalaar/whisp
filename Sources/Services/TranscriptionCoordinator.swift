@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import UserNotifications
 import os.log
 
 /// Saves and restores full clipboard contents (rich text, images, files — not just plain strings).
@@ -193,14 +192,16 @@ internal final class TranscriptionCoordinator {
         // Auto-paste if enabled and requested
         var didPaste = false
         if shouldPaste {
-            let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+            let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
+            Logger.app.debug("SmartPaste enabled=\(enableSmartPaste)")
             if enableSmartPaste {
                 try? await Task.sleep(for: .milliseconds(100))
                 didPaste = pasteManager.pasteToActiveApp()
+                Logger.app.debug("SmartPaste paste result=\(didPaste)")
 
                 if !didPaste {
-                    // Paste failed (accessibility denied, etc.) — notify user
-                    await showPasteFailureNotification()
+                    // Paste failed (accessibility denied, etc.) — show prominent alert
+                    await showPasteFailureAlert()
                 }
             }
         }
@@ -305,19 +306,22 @@ internal final class TranscriptionCoordinator {
         return SourceAppInfo.unknown
     }
 
-    private func showPasteFailureNotification() async {
-        let content = UNMutableNotificationContent()
-        content.title = "Paste Failed"
-        content.body = "Text copied to clipboard — press ⌘V to paste"
-        content.sound = .default
+    private func showPasteFailureAlert() async {
+        guard !AppEnvironment.isRunningTests else { return }
 
-        let request = UNNotificationRequest(
-            identifier: "paste-failed-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
+        let alert = NSAlert()
+        alert.messageText = "Smart Paste Requires Accessibility Permission"
+        alert.informativeText = "VoiceFlow needs Accessibility permission to type text into other apps. Your transcription has been copied to the clipboard.\n\nTo enable Smart Paste:\n1. Open System Settings > Privacy & Security > Accessibility\n2. Add VoiceFlow and toggle it ON"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open Accessibility Settings")
+        alert.addButton(withTitle: "OK")
 
-        try? await UNUserNotificationCenter.current().add(request)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     private func recordSourceUsage(words: Int, characters: Int, sourceInfo: SourceAppInfo?) {

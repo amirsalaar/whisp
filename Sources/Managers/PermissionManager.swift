@@ -40,7 +40,7 @@ internal class PermissionManager {
     private let accessibilityManager = AccessibilityPermissionManager()
     
     private var needsAccessibility: Bool {
-        let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+        let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
         let pressAndHoldEnabled = PressAndHoldSettings.configuration().enabled
         return enableSmartPaste || pressAndHoldEnabled
     }
