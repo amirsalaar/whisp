@@ -250,14 +250,17 @@ internal final class TranscriptionCoordinator {
 
         let alert = NSAlert()
         alert.messageText = "Smart Paste Requires Accessibility Permission"
-        alert.informativeText = "VoiceFlow needs Accessibility permission to type text into other apps. Your transcription has been copied to the clipboard.\n\nTo enable Smart Paste:\n1. Open System Settings > Privacy & Security > Accessibility\n2. Add VoiceFlow and toggle it ON"
+        alert.informativeText =
+            "VoiceFlow needs Accessibility permission to type text into other apps. Your transcription has been copied to the clipboard.\n\nTo enable Smart Paste:\n1. Open System Settings > Privacy & Security > Accessibility\n2. Add VoiceFlow and toggle it ON"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Open Accessibility Settings")
         alert.addButton(withTitle: "OK")
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            if let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            {
                 NSWorkspace.shared.open(url)
             }
         }

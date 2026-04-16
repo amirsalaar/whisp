@@ -1,7 +1,7 @@
-import Foundation
 import AppKit
 import ApplicationServices
 import Carbon
+import Foundation
 import Observation
 import os.log
 
@@ -30,7 +30,7 @@ private final class CancellationToken: @unchecked Sendable {
 private final class ObserverBox: @unchecked Sendable {
     private let lock = NSLock()
     private var _observer: NSObjectProtocol?
-    
+
     var observer: NSObjectProtocol? {
         get {
             lock.lock()
@@ -51,11 +51,12 @@ internal enum PasteError: LocalizedError {
     case eventSourceCreationFailed
     case keyboardEventCreationFailed
     case targetAppNotAvailable
-    
+
     var errorDescription: String? {
         switch self {
         case .accessibilityPermissionDenied:
-            return "Accessibility permission is required for SmartPaste. Please enable it in System Settings > Privacy & Security > Accessibility."
+            return
+                "Accessibility permission is required for SmartPaste. Please enable it in System Settings > Privacy & Security > Accessibility."
         case .eventSourceCreationFailed:
             return "Could not create event source for paste operation."
         case .keyboardEventCreationFailed:
@@ -69,13 +70,13 @@ internal enum PasteError: LocalizedError {
 @Observable
 @MainActor
 internal class PasteManager {
-    
+
     private let accessibilityManager: AccessibilityPermissionManager
-    
+
     init(accessibilityManager: AccessibilityPermissionManager = AccessibilityPermissionManager()) {
         self.accessibilityManager = accessibilityManager
     }
-    
+
     /// Types text directly into the focused application via CGEvent keyboard events.
     /// Does NOT touch the clipboard. Returns `true` on success.
     @discardableResult
@@ -125,7 +126,7 @@ internal class PasteManager {
         Logger.app.debug("SmartPaste: CGEvent paste result=\(result)")
         return result
     }
-    
+
     /// SmartPaste function that attempts to paste text into a specific application
     /// This is the function mentioned in the test requirements
     func smartPaste(into targetApp: NSRunningApplication?, text: String) {
@@ -133,15 +134,15 @@ internal class PasteManager {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        
+
         let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
-        
+
         guard enableSmartPaste else {
             // SmartPaste is disabled in settings - fail with appropriate error
             handlePasteResult(.failure(PasteError.targetAppNotAvailable))
             return
         }
-        
+
         // CRITICAL: Check accessibility permission without prompting - never bypass this check
         // If this fails, we must NOT attempt to proceed with CGEvent operations
         guard accessibilityManager.checkPermission() else {
@@ -150,13 +151,13 @@ internal class PasteManager {
             handlePasteResult(.failure(PasteError.accessibilityPermissionDenied))
             return
         }
-        
+
         // Validate target application
         guard let targetApp = targetApp, !targetApp.isTerminated else {
             handlePasteResult(.failure(PasteError.targetAppNotAvailable))
             return
         }
-        
+
         // Attempt to activate target application
         let activationSuccess = targetApp.activate(options: [])
         if !activationSuccess {
@@ -164,22 +165,22 @@ internal class PasteManager {
             handlePasteResult(.failure(PasteError.targetAppNotAvailable))
             return
         }
-        
+
         // Wait for app to become active before pasting
         waitForApplicationActivation(targetApp) { [weak self] in
             guard let self = self else { return }
-            
+
             // Double-check permission before performing paste (belt and suspenders approach)
             guard self.accessibilityManager.checkPermission() else {
                 // Permission was revoked between initial check and paste attempt
                 self.handlePasteResult(.failure(PasteError.accessibilityPermissionDenied))
                 return
             }
-            
+
             self.performCGEventPaste()
         }
     }
-    
+
     /// Performs paste with completion handler for proper coordination
     @MainActor
     func pasteWithCompletionHandler() async {
@@ -189,7 +190,7 @@ internal class PasteManager {
             }
         }
     }
-    
+
     /// Performs paste with immediate user interaction context
     /// This should work better than automatic pasting
     func pasteWithUserInteraction(completion: ((Result<Void, PasteError>) -> Void)? = nil) {
@@ -198,7 +199,7 @@ internal class PasteManager {
             // Show permission request with explanation - this includes user education
             accessibilityManager.requestPermissionWithExplanation { [weak self] granted in
                 guard let self = self else { return }
-                
+
                 if granted {
                     // Permission was granted - attempt paste operation
                     self.performCGEventPaste(completion: completion)
@@ -211,13 +212,13 @@ internal class PasteManager {
             }
             return
         }
-        
+
         // Permission is available - proceed with paste
         performCGEventPaste(completion: completion)
     }
-    
+
     // MARK: - CGEvent Paste
-    
+
     @discardableResult
     private func performCGEventPaste(completion: ((Result<Void, PasteError>) -> Void)? = nil) -> Bool {
         // CRITICAL: Prevent any paste operations during tests
@@ -251,47 +252,48 @@ internal class PasteManager {
             return false
         }
     }
-    
+
     // Removed - using AccessibilityPermissionManager instead
-    
+
     private func simulateCmdVPaste() throws {
         // CRITICAL: Prevent any paste operations during tests
         if NSClassFromString("XCTestCase") != nil {
             throw PasteError.accessibilityPermissionDenied
         }
-        
+
         // Final permission check before creating any CGEvents
         // This is our last line of defense against unauthorized paste operations
         guard accessibilityManager.checkPermission() else {
             throw PasteError.accessibilityPermissionDenied
         }
-        
+
         // Create event source with proper session state
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             throw PasteError.eventSourceCreationFailed
         }
-        
+
         // Configure event source to suppress local events during paste operation
         // This prevents interference from local keyboard input
         source.setLocalEventsFilterDuringSuppressionState(
             [.permitLocalMouseEvents, .permitSystemDefinedEvents],
             state: .eventSuppressionStateSuppressionInterval
         )
-        
+
         // Create ⌘V key events for paste operation
         let cmdFlag = CGEventFlags([.maskCommand])
-        let vKeyCode = CGKeyCode(kVK_ANSI_V) // V key code
-        
+        let vKeyCode = CGKeyCode(kVK_ANSI_V)  // V key code
+
         // Create both key down and key up events for complete key press simulation
         guard let keyVDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
-              let keyVUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false) else {
+            let keyVUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
+        else {
             throw PasteError.keyboardEventCreationFailed
         }
-        
+
         // Apply Command modifier flag to both events
         keyVDown.flags = cmdFlag
         keyVUp.flags = cmdFlag
-        
+
         // Post the key events to the system
         // This simulates pressing and releasing ⌘V
         keyVDown.post(tap: .cgSessionEventTap)
@@ -318,7 +320,8 @@ internal class PasteManager {
             var chunk = Array(utf16[offset..<end])
 
             guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+                let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+            else {
                 throw PasteError.keyboardEventCreationFailed
             }
 
@@ -329,14 +332,16 @@ internal class PasteManager {
             keyUp.post(tap: .cgSessionEventTap)
         }
     }
-    
+
     private func handlePasteResult(_ result: Result<Void, PasteError>) {
         // Result tracking only — no observers registered
     }
-    
+
     // MARK: - App Activation Handling
-    
-    private func waitForApplicationActivation(_ target: NSRunningApplication, completion: @escaping () -> Void) {
+
+    private func waitForApplicationActivation(
+        _ target: NSRunningApplication, completion: @escaping () -> Void
+    ) {
         // If already active, execute completion immediately
         if target.isActive {
             completion()
@@ -365,8 +370,10 @@ internal class PasteManager {
             object: nil,
             queue: .main
         ) { [weak observerBox, weak cancellationToken] notification in
-            if let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-               activatedApp.processIdentifier == target.processIdentifier {
+            if let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication,
+                activatedApp.processIdentifier == target.processIdentifier
+            {
 
                 guard let token = cancellationToken, !token.isCancelled else { return }
                 token.isCancelled = true
@@ -378,5 +385,5 @@ internal class PasteManager {
             }
         }
     }
-    
+
 }
