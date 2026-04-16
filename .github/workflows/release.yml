@@ -11,6 +11,10 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
+    env:
+      APP_NAME: Whisp
+      APP_BUNDLE: Whisp.app
+      BINARY: .build/apple/Products/Release/Whisp
 
     steps:
       - name: Checkout
@@ -42,7 +46,6 @@ jobs:
       - name: Build universal binary
         run: |
           swift build -c release --arch arm64 --arch x86_64 2>&1 || true
-          BINARY=".build/apple/Products/Release/Whisp"
           if [ ! -f "$BINARY" ]; then
             echo "❌ Binary not found at $BINARY"
             exit 1
@@ -62,44 +65,44 @@ jobs:
               Sources/VersionInfo.swift.template > Sources/Utilities/VersionInfo.swift
 
           # Clean previous binary so stale artifacts can't mask a rebuild failure
-          rm -f .build/apple/Products/Release/Whisp
+          rm -f "$BINARY"
 
           # Rebuild with correct version info
           swift build -c release --arch arm64 --arch x86_64 2>&1 || true
-          if [ ! -f ".build/apple/Products/Release/Whisp" ]; then
+          if [ ! -f "$BINARY" ]; then
             echo "❌ Rebuild failed — binary not found"
             exit 1
           fi
 
           # Create bundle structure
-          mkdir -p Whisp.app/Contents/{MacOS,Resources,Resources/bin}
+          mkdir -p "$APP_BUNDLE/Contents/"{MacOS,Resources,Resources/bin}
 
-          cp .build/apple/Products/Release/Whisp Whisp.app/Contents/MacOS/
-          chmod +x Whisp.app/Contents/MacOS/Whisp
+          cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/"
+          chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
           # Copy SwiftPM-processed resource bundles (Assets.xcassets, etc.)
           find .build/apple/Products/Release -maxdepth 1 -type d -name "*.bundle" -print0 | while IFS= read -r -d '' bundle; do
-            cp -R "$bundle" Whisp.app/Contents/Resources/
+            cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"
           done
 
           # Copy additional resources
-          [ -f Sources/Resources/DashboardLogo.jpg ] && cp Sources/Resources/DashboardLogo.jpg Whisp.app/Contents/Resources/
-          [ -f Sources/verify_parakeet.py ] && cp Sources/verify_parakeet.py Whisp.app/Contents/Resources/
-          [ -f Sources/ml_daemon.py ] && cp Sources/ml_daemon.py Whisp.app/Contents/Resources/
-          [ -d Sources/ml ] && cp -R Sources/ml Whisp.app/Contents/Resources/ && find Whisp.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-          [ -f Sources/Resources/pyproject.toml ] && cp Sources/Resources/pyproject.toml Whisp.app/Contents/Resources/
+          [ -f Sources/Resources/DashboardLogo.jpg ] && cp Sources/Resources/DashboardLogo.jpg "$APP_BUNDLE/Contents/Resources/"
+          [ -f Sources/verify_parakeet.py ] && cp Sources/verify_parakeet.py "$APP_BUNDLE/Contents/Resources/"
+          [ -f Sources/ml_daemon.py ] && cp Sources/ml_daemon.py "$APP_BUNDLE/Contents/Resources/"
+          [ -d Sources/ml ] && cp -R Sources/ml "$APP_BUNDLE/Contents/Resources/" && find "$APP_BUNDLE/Contents/Resources/ml" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          [ -f Sources/Resources/pyproject.toml ] && cp Sources/Resources/pyproject.toml "$APP_BUNDLE/Contents/Resources/"
 
           # Reuse repo Info.plist and patch build variables + version fields
-          cp Info.plist Whisp.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDevelopmentRegion en" Whisp.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Whisp" Whisp.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 14.0" Whisp.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Whisp.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" Whisp.app/Contents/Info.plist
+          cp Info.plist "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDevelopmentRegion en" "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 14.0" "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP_BUNDLE/Contents/Info.plist"
           # Add icon key if missing
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" Whisp.app/Contents/Info.plist 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" Whisp.app/Contents/Info.plist
-          plutil -lint Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$APP_BUNDLE/Contents/Info.plist"
+          plutil -lint "$APP_BUNDLE/Contents/Info.plist"
 
           # Ad-hoc sign for distribution (notarize locally if needed)
           cat > /tmp/entitlements.plist <<EOF2
@@ -115,23 +118,23 @@ jobs:
 
           codesign --force --deep --options runtime \
             --entitlements /tmp/entitlements.plist \
-            --sign - Whisp.app
+            --sign - "$APP_BUNDLE"
 
-          codesign --verify --verbose Whisp.app
+          codesign --verify --verbose "$APP_BUNDLE"
 
       - name: Create zip
-        run: zip -r "Whisp-${VERSION}.zip" Whisp.app
+        run: zip -r "${APP_NAME}-${VERSION}.zip" "$APP_BUNDLE"
 
       - name: Create DMG
         run: |
           STAGING=$(mktemp -d)
-          cp -R Whisp.app "$STAGING/"
+          cp -R "$APP_BUNDLE" "$STAGING/"
           ln -s /Applications "$STAGING/Applications"
           hdiutil create \
-            -volname Whisp \
+            -volname "$APP_NAME" \
             -srcfolder "$STAGING" \
             -ov -format UDZO \
-            "Whisp-${VERSION}.dmg"
+            "${APP_NAME}-${VERSION}.dmg"
           rm -rf "$STAGING"
 
       - name: Create GitHub Release
@@ -139,7 +142,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "Whisp-${VERSION}.zip" \
-            "Whisp-${VERSION}.dmg" \
-            --title "Whisp $VERSION" \
+            "${APP_NAME}-${VERSION}.zip" \
+            "${APP_NAME}-${VERSION}.dmg" \
+            --title "$APP_NAME $VERSION" \
             --generate-notes
