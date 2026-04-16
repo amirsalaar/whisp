@@ -50,11 +50,13 @@ internal struct RecordingButton: View {
     private var buttonColor: Color {
         if showSuccess {
             let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
-            return enableSmartPaste ? .green : .green  // Green for both paste and success
+            return enableSmartPaste
+                ? Color(red: 0.30, green: 0.55, blue: 0.35)
+                : Color(red: 0.30, green: 0.55, blue: 0.35)
         } else if isRecording {
-            return .red
+            return Color(red: 0.85, green: 0.30, blue: 0.25)
         } else if hasPermission {
-            return .blue
+            return Color(red: 0.82, green: 0.58, blue: 0.16)
         } else {
             return .gray
         }

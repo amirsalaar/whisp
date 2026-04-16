@@ -7,8 +7,15 @@ import sys
 from typing import Any, Dict
 
 from .correction import correct
-from .loader import load_correction_model, load_parakeet_model
+from .gemma import transcribe as gemma_transcribe
+from .loader import (
+    load_correction_model,
+    load_gemma_model,
+    load_parakeet_model,
+    load_whisper_mlx_model,
+)
 from .parakeet import DEFAULT_PARAKEET_REPO, transcribe
+from .whisper_mlx import DEFAULT_WHISPER_MLX_REPO, transcribe as whisper_mlx_transcribe
 
 
 def _respond(payload: Dict[str, Any]) -> None:
@@ -35,6 +42,28 @@ def _handle_request(request: Dict[str, Any]) -> None:
             _respond({"jsonrpc": "2.0", "id": req_id, "result": result})
             return
 
+        if method == "gemma_transcribe":
+            repo = params.get("repo")
+            audio_path = params.get("audio_path")
+            prompt = params.get("prompt")
+            do_correct = params.get("correct", True)
+            if not repo:
+                raise ValueError("repo is required for gemma_transcribe")
+            if not audio_path:
+                raise ValueError("audio_path is required for gemma_transcribe")
+            result = gemma_transcribe(repo, audio_path, prompt, correct=do_correct)
+            _respond({"jsonrpc": "2.0", "id": req_id, "result": result})
+            return
+
+        if method == "whisper_mlx_transcribe":
+            repo = params.get("repo") or DEFAULT_WHISPER_MLX_REPO
+            audio_path = params.get("audio_path")
+            if not audio_path:
+                raise ValueError("audio_path is required for whisper_mlx_transcribe")
+            result = whisper_mlx_transcribe(repo, audio_path)
+            _respond({"jsonrpc": "2.0", "id": req_id, "result": result})
+            return
+
         if method == "correct":
             repo = params.get("repo")
             text = params.get("text")
@@ -56,6 +85,10 @@ def _handle_request(request: Dict[str, Any]) -> None:
                 load_parakeet_model(repo)
             elif warm_type in ("mlx", "correction"):
                 load_correction_model(repo)
+            elif warm_type == "gemma":
+                load_gemma_model(repo)
+            elif warm_type == "whisper_mlx":
+                load_whisper_mlx_model(repo)
             else:
                 raise ValueError(f"Unknown warmup type: {warm_type}")
             _respond({"jsonrpc": "2.0", "id": req_id, "result": {"success": True}})
@@ -89,4 +122,3 @@ def main() -> int:
 
         _handle_request(request)
     return 0
-

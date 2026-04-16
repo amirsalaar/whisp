@@ -75,3 +75,50 @@ def load_correction_model(repo: str):
     MODEL_CACHE[cache_key] = (model, tokenizer)
     return MODEL_CACHE[cache_key]
 
+
+def load_gemma_model(repo: str):
+    cache_key = ("gemma", repo)
+    if cache_key in MODEL_CACHE:
+        return MODEL_CACHE[cache_key]
+
+    try:
+        from mlx_vlm import load
+    except Exception as exc:
+        raise RuntimeError(f"mlx-vlm import failed: {exc}") from exc
+
+    previous = _set_offline_env()
+    try:
+        model, processor = load(repo)
+    except Exception as exc:
+        _restore_env(previous)
+        raise RuntimeError(
+            "Gemma model not available offline. Please open Settings to download it."
+        ) from exc
+    _restore_env(previous)
+
+    MODEL_CACHE[cache_key] = (model, processor)
+    return MODEL_CACHE[cache_key]
+
+
+def load_whisper_mlx_model(repo: str):
+    cache_key = ("whisper_mlx", repo)
+    if cache_key in MODEL_CACHE:
+        return MODEL_CACHE[cache_key]
+
+    try:
+        from mlx_audio.stt import load
+    except Exception as exc:
+        raise RuntimeError(f"mlx-audio import failed: {exc}") from exc
+
+    previous = _set_offline_env()
+    try:
+        model = load(repo)
+    except Exception as exc:
+        _restore_env(previous)
+        raise RuntimeError(
+            "Whisper MLX model not available offline. Please open Settings to download it."
+        ) from exc
+    _restore_env(previous)
+
+    MODEL_CACHE[cache_key] = model
+    return model
