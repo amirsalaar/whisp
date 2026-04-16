@@ -169,6 +169,12 @@ internal final class FloatingMicrophoneDockManager: NSObject {
                 self?.openSettingsAction?()
             }
         )
+        let hostingView = NSHostingView(rootView: dockView)
+        hostingView.frame = NSRect(
+            origin: .zero,
+            size: FloatingMicrophoneDockLayout.size(for: viewModel.visualStyle)
+        )
+        hostingView.autoresizingMask = [.width, .height]
 
         let panel = FloatingMicrophoneDockPanel(
             contentRect: NSRect(
@@ -189,7 +195,7 @@ internal final class FloatingMicrophoneDockManager: NSObject {
         panel.isMovableByWindowBackground = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.contentViewController = NSHostingController(rootView: dockView)
+        panel.contentView = hostingView
 
         self.panel = panel
         updatePanelLayout(animated: false)
