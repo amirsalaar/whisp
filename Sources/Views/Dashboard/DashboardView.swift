@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - Dashboard Theme
 internal enum DashboardTheme {
@@ -192,6 +192,7 @@ internal struct DashboardView: View {
 // MARK: - Preview
 #Preview("Dashboard") {
     DashboardView()
-        .frame(width: LayoutMetrics.DashboardWindow.previewSize.width,
-               height: LayoutMetrics.DashboardWindow.previewSize.height)
+        .frame(
+            width: LayoutMetrics.DashboardWindow.previewSize.width,
+            height: LayoutMetrics.DashboardWindow.previewSize.height)
 }

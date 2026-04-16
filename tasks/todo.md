@@ -118,3 +118,12 @@ Result: the dock now matches the requested four-state behavior more closely, wit
 - [x] Create a stable local VoiceFlow signing identity, reinstall the app, and reset VoiceFlow privacy permissions once.
 
 Result: VoiceFlow is now installed with a stable local signature, so Microphone, Accessibility, and Input Monitoring permissions can persist across rebuilds instead of being reset by ad-hoc installs. The remaining user action is a one-time re-grant of the relevant permissions after the reset.
+
+## Floating dock hover crash
+
+- [x] Inspect the new macOS crash reports triggered by hovering the floating dock.
+- [x] Trace the failure to SwiftUI auto-updating the hosting window's size constraints while the dock manager also resized the `NSPanel` manually.
+- [x] Replace the floating dock's `NSHostingController` embedding with a plain `NSHostingView` so the dock manager owns panel sizing end to end.
+- [x] Verify with `swift build` and a scripted hover against the debug app while the process stays alive.
+
+Result: hovering the floating dock no longer exits VoiceFlow. The dock manager now owns panel sizing exclusively, and the panel no longer goes through SwiftUI's controller-managed window-size path that was triggering the AppKit constraints exception.

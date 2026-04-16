@@ -98,7 +98,9 @@ internal final class TranscriptionCoordinator {
             transcriptionProvider = provider
         } else {
             let storedProvider = UserDefaults.standard.string(forKey: AppDefaults.Keys.transcriptionProvider)
-            transcriptionProvider = storedProvider.flatMap { TranscriptionProvider(rawValue: $0) } ?? AppDefaults.defaultTranscriptionProvider
+            transcriptionProvider =
+                storedProvider.flatMap { TranscriptionProvider(rawValue: $0) }
+                ?? AppDefaults.defaultTranscriptionProvider
         }
 
         // Get model from UserDefaults if not specified
@@ -107,7 +109,8 @@ internal final class TranscriptionCoordinator {
             whisperModel = selectedModel
         } else {
             let storedModel = UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedWhisperModel)
-            whisperModel = storedModel.flatMap { WhisperModel(rawValue: $0) } ?? AppDefaults.defaultWhisperModel
+            whisperModel =
+                storedModel.flatMap { WhisperModel(rawValue: $0) } ?? AppDefaults.defaultWhisperModel
         }
 
         // Transcribe audio
@@ -115,7 +118,8 @@ internal final class TranscriptionCoordinator {
         if transcriptionProvider == .local {
             // Ensure model is downloaded before transcription
             try await ensureWhisperModelIsReady(whisperModel)
-            text = try await speechService.transcribeRaw(audioURL: audioURL, provider: transcriptionProvider, model: whisperModel)
+            text = try await speechService.transcribeRaw(
+                audioURL: audioURL, provider: transcriptionProvider, model: whisperModel)
         } else {
             text = try await speechService.transcribeRaw(audioURL: audioURL, provider: transcriptionProvider)
         }
@@ -123,7 +127,9 @@ internal final class TranscriptionCoordinator {
         try Task.checkCancellation()
 
         // Get semantic correction mode
-        let modeRaw = UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionMode) ?? SemanticCorrectionMode.off.rawValue
+        let modeRaw =
+            UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionMode)
+            ?? SemanticCorrectionMode.off.rawValue
         let mode = SemanticCorrectionMode(rawValue: modeRaw) ?? .off
 
         // Apply semantic correction if enabled
@@ -233,7 +239,7 @@ internal final class TranscriptionCoordinator {
     }
 
     private func waitForWhisperModelDownload(_ model: WhisperModel) async throws {
-        let timeout: TimeInterval = 20 * 60 // 20 minutes
+        let timeout: TimeInterval = 20 * 60  // 20 minutes
         let startedAt = Date()
         var didRetry = false
 
@@ -285,7 +291,8 @@ internal final class TranscriptionCoordinator {
     private func currentSourceAppInfo() -> SourceAppInfo {
         // Get the frontmost app that's not VoiceFlow
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
-           frontmostApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            frontmostApp.bundleIdentifier != Bundle.main.bundleIdentifier
+        {
             return SourceAppInfo.from(app: frontmostApp) ?? SourceAppInfo.unknown
         }
 
