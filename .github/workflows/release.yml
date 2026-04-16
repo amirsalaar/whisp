@@ -42,7 +42,7 @@ jobs:
       - name: Build universal binary
         run: |
           swift build -c release --arch arm64 --arch x86_64 2>&1 || true
-          BINARY=".build/apple/Products/Release/VoiceFlow"
+          BINARY=".build/apple/Products/Release/Whisp"
           if [ ! -f "$BINARY" ]; then
             echo "❌ Binary not found at $BINARY"
             exit 1
@@ -62,44 +62,44 @@ jobs:
               Sources/VersionInfo.swift.template > Sources/Utilities/VersionInfo.swift
 
           # Clean previous binary so stale artifacts can't mask a rebuild failure
-          rm -f .build/apple/Products/Release/VoiceFlow
+          rm -f .build/apple/Products/Release/Whisp
 
           # Rebuild with correct version info
           swift build -c release --arch arm64 --arch x86_64 2>&1 || true
-          if [ ! -f ".build/apple/Products/Release/VoiceFlow" ]; then
+          if [ ! -f ".build/apple/Products/Release/Whisp" ]; then
             echo "❌ Rebuild failed — binary not found"
             exit 1
           fi
 
           # Create bundle structure
-          mkdir -p VoiceFlow.app/Contents/{MacOS,Resources,Resources/bin}
+          mkdir -p Whisp.app/Contents/{MacOS,Resources,Resources/bin}
 
-          cp .build/apple/Products/Release/VoiceFlow VoiceFlow.app/Contents/MacOS/
-          chmod +x VoiceFlow.app/Contents/MacOS/VoiceFlow
+          cp .build/apple/Products/Release/Whisp Whisp.app/Contents/MacOS/
+          chmod +x Whisp.app/Contents/MacOS/Whisp
 
           # Copy SwiftPM-processed resource bundles (Assets.xcassets, etc.)
           find .build/apple/Products/Release -maxdepth 1 -type d -name "*.bundle" -print0 | while IFS= read -r -d '' bundle; do
-            cp -R "$bundle" VoiceFlow.app/Contents/Resources/
+            cp -R "$bundle" Whisp.app/Contents/Resources/
           done
 
           # Copy additional resources
-          [ -f Sources/Resources/DashboardLogo.jpg ] && cp Sources/Resources/DashboardLogo.jpg VoiceFlow.app/Contents/Resources/
-          [ -f Sources/verify_parakeet.py ] && cp Sources/verify_parakeet.py VoiceFlow.app/Contents/Resources/
-          [ -f Sources/ml_daemon.py ] && cp Sources/ml_daemon.py VoiceFlow.app/Contents/Resources/
-          [ -d Sources/ml ] && cp -R Sources/ml VoiceFlow.app/Contents/Resources/ && find VoiceFlow.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-          [ -f Sources/Resources/pyproject.toml ] && cp Sources/Resources/pyproject.toml VoiceFlow.app/Contents/Resources/
+          [ -f Sources/Resources/DashboardLogo.jpg ] && cp Sources/Resources/DashboardLogo.jpg Whisp.app/Contents/Resources/
+          [ -f Sources/verify_parakeet.py ] && cp Sources/verify_parakeet.py Whisp.app/Contents/Resources/
+          [ -f Sources/ml_daemon.py ] && cp Sources/ml_daemon.py Whisp.app/Contents/Resources/
+          [ -d Sources/ml ] && cp -R Sources/ml Whisp.app/Contents/Resources/ && find Whisp.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          [ -f Sources/Resources/pyproject.toml ] && cp Sources/Resources/pyproject.toml Whisp.app/Contents/Resources/
 
           # Reuse repo Info.plist and patch build variables + version fields
-          cp Info.plist VoiceFlow.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDevelopmentRegion en" VoiceFlow.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable VoiceFlow" VoiceFlow.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 14.0" VoiceFlow.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" VoiceFlow.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" VoiceFlow.app/Contents/Info.plist
+          cp Info.plist Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDevelopmentRegion en" Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Whisp" Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 14.0" Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Whisp.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" Whisp.app/Contents/Info.plist
           # Add icon key if missing
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" VoiceFlow.app/Contents/Info.plist 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" VoiceFlow.app/Contents/Info.plist
-          plutil -lint VoiceFlow.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" Whisp.app/Contents/Info.plist 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" Whisp.app/Contents/Info.plist
+          plutil -lint Whisp.app/Contents/Info.plist
 
           # Ad-hoc sign for distribution (notarize locally if needed)
           cat > /tmp/entitlements.plist <<EOF2
@@ -115,23 +115,23 @@ jobs:
 
           codesign --force --deep --options runtime \
             --entitlements /tmp/entitlements.plist \
-            --sign - VoiceFlow.app
+            --sign - Whisp.app
 
-          codesign --verify --verbose VoiceFlow.app
+          codesign --verify --verbose Whisp.app
 
       - name: Create zip
-        run: zip -r "VoiceFlow-${VERSION}.zip" VoiceFlow.app
+        run: zip -r "Whisp-${VERSION}.zip" Whisp.app
 
       - name: Create DMG
         run: |
           STAGING=$(mktemp -d)
-          cp -R VoiceFlow.app "$STAGING/"
+          cp -R Whisp.app "$STAGING/"
           ln -s /Applications "$STAGING/Applications"
           hdiutil create \
-            -volname VoiceFlow \
+            -volname Whisp \
             -srcfolder "$STAGING" \
             -ov -format UDZO \
-            "VoiceFlow-${VERSION}.dmg"
+            "Whisp-${VERSION}.dmg"
           rm -rf "$STAGING"
 
       - name: Create GitHub Release
@@ -139,7 +139,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "VoiceFlow-${VERSION}.zip" \
-            "VoiceFlow-${VERSION}.dmg" \
-            --title "VoiceFlow $VERSION" \
+            "Whisp-${VERSION}.zip" \
+            "Whisp-${VERSION}.dmg" \
+            --title "Whisp $VERSION" \
             --generate-notes
