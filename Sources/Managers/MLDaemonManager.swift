@@ -81,6 +81,21 @@ internal actor MLDaemonManager {
         return result.text
     }
 
+    func gemmaTranscribe(repo: String, audioPath: String, prompt: String? = nil) async throws -> String {
+        struct GemmaResult: Decodable {
+            let success: Bool
+            let text: String
+            let error: String?
+        }
+        var params: [String: Any] = ["repo": repo, "audio_path": audioPath]
+        if let prompt = prompt { params["prompt"] = prompt }
+        let result: GemmaResult = try await sendRequest(method: "gemma_transcribe", params: params)
+        guard result.success else {
+            throw MLDaemonError.remoteError(result.error ?? "Gemma transcription failed")
+        }
+        return result.text
+    }
+
     func warmup(type: String, repo: String) async throws {
         struct WarmupResult: Decodable { let success: Bool? }
         _ = try await sendRequest(method: "warmup", params: ["type": type, "repo": repo]) as WarmupResult

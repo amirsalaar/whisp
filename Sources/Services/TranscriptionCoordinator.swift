@@ -85,10 +85,10 @@ internal final class TranscriptionCoordinator {
             ?? SemanticCorrectionMode.off.rawValue
         let mode = SemanticCorrectionMode(rawValue: modeRaw) ?? .off
 
-        // Apply semantic correction if enabled
+        // Apply semantic correction if enabled (skip for Gemma — it combines transcription + correction)
         var finalText = text
         let sourceBundleId = sourceAppInfo?.bundleIdentifier
-        if mode != .off {
+        if mode != .off && transcriptionProvider != .gemma {
             progressHandler?("Semantic correction...")
             let outcome = await semanticCorrectionService.correctWithWarning(
                 text: text,

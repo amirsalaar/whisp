@@ -2,18 +2,29 @@ import SwiftUI
 
 internal struct DashboardProvidersView: View {
     // Persistent settings - Transcription
-    @AppStorage(AppDefaults.Keys.transcriptionProvider) var transcriptionProvider = AppDefaults.defaultTranscriptionProvider
-    @AppStorage(AppDefaults.Keys.selectedWhisperModel) var selectedWhisperModel = AppDefaults.defaultWhisperModel
-    @AppStorage(AppDefaults.Keys.selectedParakeetModel) var selectedParakeetModel = AppDefaults.defaultParakeetModel
+    @AppStorage(AppDefaults.Keys.transcriptionProvider) var transcriptionProvider = AppDefaults
+        .defaultTranscriptionProvider
+    @AppStorage(AppDefaults.Keys.selectedWhisperModel) var selectedWhisperModel = AppDefaults
+        .defaultWhisperModel
+    @AppStorage(AppDefaults.Keys.selectedParakeetModel) var selectedParakeetModel = AppDefaults
+        .defaultParakeetModel
     @AppStorage(AppDefaults.Keys.hasSetupParakeet) var hasSetupParakeet = false
     @AppStorage(AppDefaults.Keys.hasSetupLocalLLM) var hasSetupLocalLLM = false
+    @AppStorage(AppDefaults.Keys.hasSetupGemma) var hasSetupGemma = false
+    @AppStorage(AppDefaults.Keys.selectedGemmaModel) var selectedGemmaModel = AppDefaults.defaultGemmaModel
     @AppStorage("openAIBaseURL") var openAIBaseURL = ""
     @AppStorage("geminiBaseURL") var geminiBaseURL = ""
     @AppStorage(AppDefaults.Keys.maxModelStorageGB) var maxModelStorageGB = 5.0
-    
+
     // Persistent settings - Correction
-    @AppStorage(AppDefaults.Keys.semanticCorrectionMode) private var semanticCorrectionModeRaw = AppDefaults.defaultSemanticCorrectionMode.rawValue
-    @AppStorage(AppDefaults.Keys.semanticCorrectionModelRepo) private var semanticCorrectionModelRepo = AppDefaults.defaultSemanticCorrectionModelRepo
+    @AppStorage(AppDefaults.Keys.semanticCorrectionMode) private var semanticCorrectionModeRaw = AppDefaults
+        .defaultSemanticCorrectionMode.rawValue
+    @AppStorage(AppDefaults.Keys.semanticCorrectionModelRepo) private var semanticCorrectionModelRepo =
+        AppDefaults.defaultSemanticCorrectionModelRepo
+
+    // Gemma UI state
+    @State var isVerifyingGemma = false
+    @State var gemmaVerifyMessage: String?
 
     // UI state
     @State var openAIKey = ""
@@ -34,7 +45,7 @@ internal struct DashboardProvidersView: View {
     @State var downloadedModels: [WhisperModel] = []
     @State var modelDownloadStates: [WhisperModel: Bool] = [:]
     @State var downloadStartTime: [WhisperModel: Date] = [:]
-    
+
     // Correction UI state
     @State var mlxModelManager = MLXModelManager.shared
     @State private var isRefreshingMLXModels = false
@@ -67,6 +78,12 @@ internal struct DashboardProvidersView: View {
                 }
             }
 
+            if transcriptionProvider == .gemma {
+                Section("Gemma Setup") {
+                    gemmaCard
+                }
+            }
+
             if transcriptionProvider == .local {
                 Section("Local Models") {
                     localWhisperCard
@@ -88,7 +105,7 @@ internal struct DashboardProvidersView: View {
                 isRunning: $isSettingUp,
                 logs: $setupLogs,
                 title: setupStatus ?? "Setting up environment…",
-                onStart: { }
+                onStart: {}
             )
         }
         .onAppear {
@@ -102,7 +119,7 @@ internal struct DashboardProvidersView: View {
             }
         }
     }
-    
+
     // MARK: - Correction Section
     private var correctionSection: some View {
         let mode = SemanticCorrectionMode(rawValue: semanticCorrectionModeRaw) ?? .off
@@ -128,14 +145,15 @@ internal struct DashboardProvidersView: View {
             MLXModelsSheet(selectedModelRepo: $semanticCorrectionModelRepo)
         }
     }
-    
+
     private var correctionMLXSection: some View {
         let models = mlxModelsForPicker()
         let repo = semanticCorrectionModelRepo
         let selectedModel = models.first(where: { $0.repo == repo })
         let isDownloaded = mlxModelManager.downloadedModels.contains(repo)
         let isDownloading = mlxModelManager.isDownloading[repo] ?? false
-        let sizeText = mlxModelManager.modelSizes[repo].map { mlxModelManager.formatBytes($0) }
+        let sizeText =
+            mlxModelManager.modelSizes[repo].map { mlxModelManager.formatBytes($0) }
             ?? selectedModel?.estimatedSize
             ?? ""
         let progressText = mlxModelManager.downloadProgress[repo]
@@ -143,9 +161,11 @@ internal struct DashboardProvidersView: View {
         return Group {
             LabeledContent("Environment") {
                 HStack(spacing: 10) {
-                    Label(envReady ? "Ready" : "Setup required",
-                          systemImage: envReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(envReady ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
+                    Label(
+                        envReady ? "Ready" : "Setup required",
+                        systemImage: envReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(envReady ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
 
                     if !envReady {
                         Button("Install…") { runCorrectionSetup() }
@@ -187,7 +207,9 @@ internal struct DashboardProvidersView: View {
             }
 
             if !sizeText.isEmpty || (progressText?.isEmpty == false) {
-                let status = (progressText?.isEmpty == false) ? (progressText ?? "") : (isDownloaded ? "Downloaded" : "Not downloaded")
+                let status =
+                    (progressText?.isEmpty == false)
+                    ? (progressText ?? "") : (isDownloaded ? "Downloaded" : "Not downloaded")
                 let line = status + (sizeText.isEmpty ? "" : " • \(sizeText)")
                 Text(line)
                     .font(.caption2)
@@ -230,7 +252,7 @@ internal struct DashboardProvidersView: View {
                 .textSelection(.enabled)
         }
     }
-    
+
     private var correctionCloudInfo: some View {
         Label("Uses your selected cloud provider for post-processing.", systemImage: "cloud")
             .foregroundStyle(.secondary)
@@ -249,7 +271,7 @@ internal struct DashboardProvidersView: View {
     private func downloadMLXModel(_ repo: String) {
         Task { await mlxModelManager.downloadModel(repo) }
     }
-    
+
     private func runCorrectionSetup() {
         setupStatus = "Installing correction dependencies…"
         setupLogs = ""
@@ -279,7 +301,7 @@ internal struct DashboardProvidersView: View {
             }
         }
     }
-    
+
     // MARK: - Engine Selection
     private var engineSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -296,11 +318,11 @@ internal struct DashboardProvidersView: View {
                 .font(.footnote)
         }
     }
-    
+
     private struct EngineConfig {
         let tagline: String
     }
-    
+
     private func engineConfig(for provider: TranscriptionProvider) -> EngineConfig {
         switch provider {
         case .openai:
@@ -311,9 +333,11 @@ internal struct DashboardProvidersView: View {
             return EngineConfig(tagline: "WhisperKit on Apple Silicon")
         case .parakeet:
             return EngineConfig(tagline: "NVIDIA's neural speech engine")
+        case .gemma:
+            return EngineConfig(tagline: "Transcription + correction in one pass")
         }
     }
-    
+
     private var selectedEngineStatus: some View {
         let (text, isReady) = statusInfo(for: transcriptionProvider)
         return Label(text, systemImage: isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -330,6 +354,10 @@ internal struct DashboardProvidersView: View {
             return downloadedModels.isEmpty ? ("Setup", false) : ("Ready", true)
         case .parakeet:
             return envReady ? ("Ready", true) : ("Setup", false)
+        case .gemma:
+            let repo = selectedGemmaModel.rawValue
+            let cached = HuggingFaceCache.hasUsableModelSnapshot(for: repo)
+            return cached && envReady ? ("Ready", true) : ("Setup", false)
         }
     }
 
@@ -344,9 +372,11 @@ internal struct DashboardProvidersView: View {
             return "laptopcomputer"
         case .parakeet:
             return "bird"
+        case .gemma:
+            return "cpu"
         }
     }
-    
+
     // MARK: - Credentials Section
     private var credentialsSection: some View {
         VStack(alignment: .leading, spacing: DashboardTheme.Spacing.md) {
@@ -379,7 +409,7 @@ internal struct DashboardProvidersView: View {
             advancedSection
         }
     }
-    
+
     private func apiKeyField(
         provider: String,
         hint: String,
@@ -395,52 +425,52 @@ internal struct DashboardProvidersView: View {
                         Text(provider)
                             .font(DashboardTheme.Fonts.sans(15, weight: .semibold))
                             .foregroundStyle(DashboardTheme.ink)
-                        
+
                         if !key.wrappedValue.isEmpty {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 14))
                                 .foregroundStyle(DashboardTheme.success)
                         }
                     }
-                    
+
                     Text(hint)
                         .font(DashboardTheme.Fonts.sans(12, weight: .regular))
                         .foregroundStyle(DashboardTheme.inkMuted)
                 }
-                
+
                 Spacer()
             }
-            
+
             // Key input field
-                HStack(spacing: DashboardTheme.Spacing.sm) {
-                    HStack(spacing: 0) {
-                        Group {
-                            if isShowing.wrappedValue {
-                                TextField(placeholder, text: key)
-                            } else {
-                                SecureField(placeholder, text: key)
-                            }
+            HStack(spacing: DashboardTheme.Spacing.sm) {
+                HStack(spacing: 0) {
+                    Group {
+                        if isShowing.wrappedValue {
+                            TextField(placeholder, text: key)
+                        } else {
+                            SecureField(placeholder, text: key)
                         }
-                        .textFieldStyle(.roundedBorder)
-                        .font(DashboardTheme.Fonts.mono(13, weight: .regular))
-                        
-                        Button {
-                            isShowing.wrappedValue.toggle()
+                    }
+                    .textFieldStyle(.roundedBorder)
+                    .font(DashboardTheme.Fonts.mono(13, weight: .regular))
+
+                    Button {
+                        isShowing.wrappedValue.toggle()
                     } label: {
                         Image(systemName: isShowing.wrappedValue ? "eye.slash" : "eye")
                             .font(.system(size: 13))
                             .foregroundStyle(DashboardTheme.inkMuted)
-                        }
-                        .buttonStyle(.plain)
                     }
-                    
-                    Button("Save", action: onSave)
-                        .buttonStyle(.borderedProminent)
+                    .buttonStyle(.plain)
                 }
+
+                Button("Save", action: onSave)
+                    .buttonStyle(.borderedProminent)
+            }
         }
         .padding(DashboardTheme.Spacing.lg)
     }
-    
+
     private var advancedSection: some View {
         DisclosureGroup("Advanced", isExpanded: $showAdvancedAPISettings) {
             Text("Custom base URLs for enterprise proxies")
@@ -462,7 +492,7 @@ internal struct DashboardProvidersView: View {
             }
         }
     }
-    
+
 }
 
 private struct MLXModelsSheet: View {
@@ -519,7 +549,8 @@ private struct MLXModelsSheet: View {
         let isDownloaded = modelManager.downloadedModels.contains(model.repo)
         let isDownloading = modelManager.isDownloading[model.repo] ?? false
         let statusText = modelManager.downloadProgress[model.repo]
-        let sizeText = modelManager.modelSizes[model.repo].map(modelManager.formatBytes) ?? model.estimatedSize
+        let sizeText =
+            modelManager.modelSizes[model.repo].map(modelManager.formatBytes) ?? model.estimatedSize
 
         HStack(spacing: 12) {
             Image(systemName: isSelected ? "checkmark" : "circle")

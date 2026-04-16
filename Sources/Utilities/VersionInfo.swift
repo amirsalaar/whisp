@@ -2,7 +2,7 @@ import Foundation
 
 struct VersionInfo {
     static let version = "2.1.0"
-    static let gitHash = "d1ea0a0931a60f1324e142592a530aff8f0e9767"
+    static let gitHash = "882ad3587b27cea5a2b08e5d1e51785c5458a8e2"
     static let buildDate = "2026-04-16"
     
     static var displayVersion: String {
@@ -14,7 +14,7 @@ struct VersionInfo {
     }
     
     static var fullVersionInfo: String {
-        var info = "Whisp \(version)"
+        var info = "VoiceFlow \(version)"
         if gitHash != "dev-build" && gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
             info += " • \(shortHash)"

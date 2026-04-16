@@ -4,8 +4,8 @@ version = "0.0.0"
 description = "Runtime dependencies for Whisp"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-  # MLX correction
-  "mlx-lm>=0.26.3, <0.27.0",
+  # Gemma 4 multimodal (audio transcription via MLX); pulls in mlx-lm transitively
+  "mlx-vlm>=0.4.4, <0.5.0",
 
   # Parakeet and audio toolchain; pin transitive deps to Py3.11-compatible wheels
   "parakeet-mlx>=0.3.5, <0.4.0",
@@ -19,5 +19,5 @@ dependencies = [
   "scikit-learn>=1.3, <2",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = []

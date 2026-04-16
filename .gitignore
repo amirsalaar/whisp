@@ -116,6 +116,7 @@ Temporary Items
 .apdisk
 
 # App specific
+Whisp.app
 VoiceFlow.app/
 VoiceFlow.zip
 *.dmg

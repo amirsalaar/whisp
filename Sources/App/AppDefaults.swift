@@ -35,6 +35,9 @@ internal enum AppDefaults {
 
         static let hasSetupLocalLLM = "hasSetupLocalLLM"
         static let hasSetupParakeet = "hasSetupParakeet"
+        static let hasSetupGemma = "hasSetupGemma"
+
+        static let selectedGemmaModel = "selectedGemmaModel"
     }
 
     // Bump when the welcome flow/content needs to be re-shown for existing users.
@@ -46,6 +49,7 @@ internal enum AppDefaults {
     internal static let defaultParakeetModel: ParakeetModel = .v3Multilingual
     internal static let defaultSemanticCorrectionMode: SemanticCorrectionMode = .off
     internal static let defaultSemanticCorrectionModelRepo: String = "mlx-community/Qwen3-1.7B-4bit"
+    internal static let defaultGemmaModel: GemmaModel = .e4b
 
     internal static func register() {
         UserDefaults.standard.register(defaults: [
@@ -73,6 +77,8 @@ internal enum AppDefaults {
 
             Keys.hasSetupLocalLLM: false,
             Keys.hasSetupParakeet: false,
+            Keys.hasSetupGemma: false,
+            Keys.selectedGemmaModel: defaultGemmaModel.rawValue,
         ])
     }
 }

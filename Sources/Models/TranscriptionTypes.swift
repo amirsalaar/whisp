@@ -2,7 +2,7 @@ import Foundation
 
 internal enum WhisperModelError: Error, LocalizedError, Sendable {
     case invalidURL(fileName: String)
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidURL(let fileName):
@@ -13,10 +13,11 @@ internal enum WhisperModelError: Error, LocalizedError, Sendable {
 
 internal enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
     case openai = "openai"
-    case gemini = "gemini" 
+    case gemini = "gemini"
     case local = "local"
     case parakeet = "parakeet"
-    
+    case gemma = "gemma"
+
     var displayName: String {
         switch self {
         case .openai:
@@ -27,6 +28,8 @@ internal enum TranscriptionProvider: String, CaseIterable, Codable, Sendable {
             return "Whisper (Local)"
         case .parakeet:
             return "Parakeet (Advanced)"
+        case .gemma:
+            return "Gemma 4 (Local)"
         }
     }
 }
@@ -78,7 +81,8 @@ internal enum WhisperModel: String, CaseIterable, Codable, Sendable {
     }
 
     func getDownloadURL() throws -> URL {
-        guard let url = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)") else {
+        guard let url = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")
+        else {
             throw WhisperModelError.invalidURL(fileName: fileName)
         }
         return url
@@ -117,6 +121,33 @@ internal enum ParakeetModel: String, CaseIterable, Codable, Sendable {
             return "English only, original model"
         case .v3Multilingual:
             return "25 languages, auto-detection"
+        }
+    }
+
+    var repoId: String {
+        rawValue
+    }
+}
+
+internal enum GemmaModel: String, CaseIterable, Codable, Sendable {
+    case e2b = "mlx-community/gemma-4-e2b-it-4bit"
+    case e4b = "mlx-community/gemma-4-e4b-it-4bit"
+
+    var displayName: String {
+        switch self {
+        case .e2b:
+            return "Gemma 4 E2B (~3.2 GB)"
+        case .e4b:
+            return "Gemma 4 E4B (~5 GB)"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .e2b:
+            return "Faster, lighter — good for quick dictation"
+        case .e4b:
+            return "Higher accuracy, built-in correction"
         }
     }
 
