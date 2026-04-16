@@ -212,10 +212,13 @@ internal struct FloatingMicrophoneDockView: View {
     let onSettingsAction: () -> Void
 
     private let shell = Color.black.opacity(0.84)
+    private let quietShell = Color.black.opacity(0.22)
     private let shellBorder = Color.white.opacity(0.16)
     private let shellHighlight = Color.white.opacity(0.05)
     private let text = Color.white.opacity(0.96)
     private let mutedText = Color.white.opacity(0.62)
+    private let handleStroke = Color.white.opacity(0.72)
+    private let handleFill = Color.white.opacity(0.06)
     private let subtleFill = Color.white.opacity(0.08)
     private let danger = Color(red: 0.95, green: 0.42, blue: 0.41)
 
@@ -248,7 +251,19 @@ internal struct FloatingMicrophoneDockView: View {
     }
 
     private var collapsedDock: some View {
-        dotsPill
+        Button(action: onSettingsAction) {
+            RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                .fill(handleFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .stroke(handleStroke, lineWidth: 0.8)
+                )
+                .frame(width: 34, height: 7)
+                .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+        .buttonStyle(.plain)
+        .help("Open VoiceFlow settings")
     }
 
     private var expandedDock: some View {
@@ -273,10 +288,20 @@ internal struct FloatingMicrophoneDockView: View {
     }
 
     private var shortcutCaptureDock: some View {
-        DockWaveformView(audioLevel: viewModel.audioLevel, barCount: 10, tint: text)
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .background(capsuleBackground)
+        DockWaveformView(
+            audioLevel: viewModel.audioLevel,
+            barCount: 7,
+            tint: handleStroke,
+            barWidth: 2,
+            spacing: 2,
+            frameHeight: 12,
+            minimumBarHeight: 3,
+            animationLift: 2.4,
+            voiceLiftScale: 5.2
+        )
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .background(quietCapsuleBackground)
     }
 
     private var recordingDock: some View {
@@ -340,17 +365,31 @@ internal struct FloatingMicrophoneDockView: View {
             .shadow(color: .black.opacity(0.22), radius: 10, y: 6)
     }
 
+    private var quietCapsuleBackground: some View {
+        Capsule(style: .continuous)
+            .fill(quietShell)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(handleStroke.opacity(0.42), lineWidth: 0.8)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.16), radius: 6, y: 3)
+    }
+
     private var dotsPill: some View {
         Button(action: onSettingsAction) {
             HStack(spacing: 4) {
-                ForEach(0..<10, id: \.self) { _ in
+                ForEach(0..<8, id: \.self) { _ in
                     Circle()
                         .fill(mutedText)
-                        .frame(width: 2.5, height: 2.5)
+                        .frame(width: 2.25, height: 2.25)
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 28)
+            .padding(.horizontal, 12)
+            .frame(height: 24)
             .background(smallCapsuleBackground)
         }
         .buttonStyle(.plain)
@@ -449,19 +488,50 @@ private struct DockWaveformView: View {
     let audioLevel: Float
     let barCount: Int
     let tint: Color
+    let barWidth: CGFloat
+    let spacing: CGFloat
+    let frameHeight: CGFloat
+    let minimumBarHeight: CGFloat
+    let animationLift: CGFloat
+    let voiceLiftScale: CGFloat
+
+    init(
+        audioLevel: Float,
+        barCount: Int,
+        tint: Color,
+        barWidth: CGFloat = 3,
+        spacing: CGFloat = 3,
+        frameHeight: CGFloat = 24,
+        minimumBarHeight: CGFloat = 5,
+        animationLift: CGFloat = 5,
+        voiceLiftScale: CGFloat = 10
+    ) {
+        self.audioLevel = audioLevel
+        self.barCount = barCount
+        self.tint = tint
+        self.barWidth = barWidth
+        self.spacing = spacing
+        self.frameHeight = frameHeight
+        self.minimumBarHeight = minimumBarHeight
+        self.animationLift = animationLift
+        self.voiceLiftScale = voiceLiftScale
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
 
-            HStack(alignment: .center, spacing: 3) {
+            HStack(alignment: .center, spacing: spacing) {
                 ForEach(0..<barCount, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(tint)
-                        .frame(width: 3, height: barHeight(for: index, time: time))
+                        .frame(width: barWidth, height: barHeight(for: index, time: time))
                 }
             }
-            .frame(width: CGFloat(barCount * 5 + 10), height: 24)
+            .frame(
+                width: CGFloat(barCount) * barWidth + CGFloat(max(barCount - 1, 0)) * spacing,
+                height: frameHeight
+            )
         }
     }
 
@@ -469,9 +539,9 @@ private struct DockWaveformView: View {
         let normalizedLevel = max(0.08, min(CGFloat(audioLevel), 1))
         let pattern: [CGFloat] = [0.24, 0.42, 0.68, 0.92, 0.78, 0.54, 0.36, 0.62, 0.86, 0.58]
         let phase = CGFloat((sin((time * 7) + (Double(index) * 0.8)) + 1) / 2)
-        let animatedLift = 1.5 + (phase * 5)
-        let voiceLift = normalizedLevel * pattern[index % pattern.count] * 10
-        return 5 + animatedLift + voiceLift
+        let animatedLift = 0.8 + (phase * animationLift)
+        let voiceLift = normalizedLevel * pattern[index % pattern.count] * voiceLiftScale
+        return minimumBarHeight + animatedLift + voiceLift
     }
 }
 

@@ -12,10 +12,10 @@ internal enum LayoutMetrics {
     }
 
     enum FloatingDock {
-        static let collapsedSize = CGSize(width: 72, height: 28)
+        static let collapsedSize = CGSize(width: 50, height: 18)
         static let expandedSize = CGSize(width: 340, height: 88)
-        static let shortcutCaptureSize = CGSize(width: 86, height: 34)
+        static let shortcutCaptureSize = CGSize(width: 76, height: 24)
         static let recordingControlsSize = CGSize(width: 138, height: 40)
-        static let bottomOffset: CGFloat = 14
+        static let bottomOffset: CGFloat = 12
     }
 }
