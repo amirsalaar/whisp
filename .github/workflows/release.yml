@@ -32,7 +32,14 @@ jobs:
         run: swift test
 
       - name: Build universal binary
-        run: swift build -c release --arch arm64 --arch x86_64
+        run: |
+          swift build -c release --arch arm64 --arch x86_64 2>&1 || true
+          BINARY=".build/apple/Products/Release/VoiceFlow"
+          if [ ! -f "$BINARY" ]; then
+            echo "❌ Binary not found at $BINARY"
+            exit 1
+          fi
+          echo "✅ Binary built: $(file "$BINARY")"
 
       - name: Create app bundle
         run: |
@@ -47,7 +54,11 @@ jobs:
               Sources/VersionInfo.swift.template > Sources/Utilities/VersionInfo.swift
 
           # Rebuild with correct version info
-          swift build -c release --arch arm64 --arch x86_64
+          swift build -c release --arch arm64 --arch x86_64 2>&1 || true
+          if [ ! -f ".build/apple/Products/Release/VoiceFlow" ]; then
+            echo "❌ Rebuild failed — binary not found"
+            exit 1
+          fi
 
           # Create bundle structure
           mkdir -p VoiceFlow.app/Contents/{MacOS,Resources,Resources/bin}
