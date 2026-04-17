@@ -60,6 +60,13 @@ internal struct DashboardProvidersView: View {
     @State private var mlxVerifyMessage: String?
     @State private var showMLXModelsSheet = false
 
+    // Delete confirmation state
+    @State var whisperModelToDelete: WhisperModel?
+    @State var showWhisperDeleteConfirm = false
+    @State var showWhisperDeleteAllConfirm = false
+    @State var mlxRepoToDelete: String?
+    @State var showMLXDeleteConfirm = false
+
     @State var modelManager = ModelManager.shared
     let keychainService: KeychainServiceProtocol = KeychainService.shared
 
@@ -112,6 +119,27 @@ internal struct DashboardProvidersView: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Delete \(mlxRepoToDelete?.split(separator: "/").last.map(String.init) ?? "model")?",
+            isPresented: $showMLXDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let repo = mlxRepoToDelete {
+                    Task { await mlxModelManager.deleteModel(repo) }
+                }
+                mlxRepoToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { mlxRepoToDelete = nil }
+        } message: {
+            if let repo = mlxRepoToDelete, let size = mlxModelManager.modelSizes[repo] {
+                Text(
+                    "This will remove the model (\(mlxModelManager.formatBytes(size))) from disk. You can re-download it later."
+                )
+            } else {
+                Text("This will remove the model from disk. You can re-download it later.")
+            }
+        }
         .sheet(isPresented: $showSetupSheet) {
             SetupEnvironmentSheet(
                 isPresented: $showSetupSheet,
@@ -530,7 +558,10 @@ private struct MLXModelsSheet: View {
                         row(for: model)
                     }
                 } footer: {
-                    Text("Cache: ~/.cache/huggingface/hub")
+                    let hubPath = HuggingFaceCache.hubDirectory().path
+                    let home = FileManager.default.homeDirectoryForCurrentUser.path
+                    let displayPath = hubPath.hasPrefix(home) ? "~" + hubPath.dropFirst(home.count) : hubPath
+                    Text("Cache: \(displayPath)")
                 }
             }
             .listStyle(.inset)

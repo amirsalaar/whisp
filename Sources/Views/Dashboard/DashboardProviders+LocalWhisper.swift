@@ -48,6 +48,38 @@ extension DashboardProvidersView {
                 .foregroundStyle(Color(red: 0.75, green: 0.30, blue: 0.28))
             }
         }
+        .confirmationDialog(
+            "Delete \(whisperModelToDelete?.displayName ?? "model")?",
+            isPresented: $showWhisperDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let model = whisperModelToDelete {
+                    deleteModel(model)
+                    if selectedWhisperModel == model {
+                        selectedWhisperModel = .base
+                    }
+                }
+                whisperModelToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { whisperModelToDelete = nil }
+        } message: {
+            Text(
+                "This will remove the model files (\(whisperModelToDelete?.fileSize ?? "")) from disk. You can re-download it later."
+            )
+        }
+        .confirmationDialog(
+            "Delete all downloaded models?",
+            isPresented: $showWhisperDeleteAllConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All", role: .destructive) {
+                deleteAllWhisperModels()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove all \(downloadedModels.count) downloaded WhisperKit models from disk.")
+        }
     }
 
     private func whisperModelRow(_ model: WhisperModel) -> some View {
@@ -121,7 +153,8 @@ extension DashboardProvidersView {
                             .foregroundStyle(Color(red: 0.35, green: 0.60, blue: 0.40))
 
                         Button {
-                            deleteModel(model)
+                            whisperModelToDelete = model
+                            showWhisperDeleteConfirm = true
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11))
@@ -147,33 +180,55 @@ extension DashboardProvidersView {
     }
 
     private var storageFooter: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Storage")
-                    .font(DashboardTheme.Fonts.sans(12, weight: .medium))
-                    .foregroundStyle(DashboardTheme.ink)
+        let storagePath =
+            WhisperKitStorage.storageDirectory()?.path
+            ?? WhisperKitStorage.downloadBaseDirectory()?.path
+            ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/huggingface/models").path
 
-                Text("~/Documents/huggingface/models/")
-                    .font(DashboardTheme.Fonts.mono(10, weight: .regular))
-                    .foregroundStyle(DashboardTheme.inkFaint)
+        return VStack(alignment: .leading, spacing: DashboardTheme.Spacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Storage")
+                        .font(DashboardTheme.Fonts.sans(12, weight: .medium))
+                        .foregroundStyle(DashboardTheme.ink)
+                }
+
+                Spacer()
+
+                let limitBytes = Int64(maxModelStorageGB * 1024 * 1024 * 1024)
+
+                Text("\(formatBytes(totalModelsSize)) / \(formatBytes(limitBytes))")
+                    .font(DashboardTheme.Fonts.mono(11, weight: .medium))
+                    .foregroundStyle(DashboardTheme.inkMuted)
+
+                Picker("", selection: $maxModelStorageGB) {
+                    Text("1 GB").tag(1.0)
+                    Text("2 GB").tag(2.0)
+                    Text("5 GB").tag(5.0)
+                    Text("10 GB").tag(10.0)
+                }
+                .labelsHidden()
+                .frame(width: 80)
             }
 
-            Spacer()
+            ModelStorageInfoView(
+                path: storagePath,
+                sizeText: nil
+            )
 
-            let limitBytes = Int64(maxModelStorageGB * 1024 * 1024 * 1024)
-
-            Text("\(formatBytes(totalModelsSize)) / \(formatBytes(limitBytes))")
-                .font(DashboardTheme.Fonts.mono(11, weight: .medium))
-                .foregroundStyle(DashboardTheme.inkMuted)
-
-            Picker("", selection: $maxModelStorageGB) {
-                Text("1 GB").tag(1.0)
-                Text("2 GB").tag(2.0)
-                Text("5 GB").tag(5.0)
-                Text("10 GB").tag(10.0)
+            if downloadedModels.count > 1 {
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) {
+                        showWhisperDeleteAllConfirm = true
+                    } label: {
+                        Label("Delete All Models", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .controlSize(.small)
+                }
             }
-            .labelsHidden()
-            .frame(width: 80)
         }
         .padding(DashboardTheme.Spacing.md)
     }
@@ -213,6 +268,22 @@ extension DashboardProvidersView {
                     downloadError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    private func deleteAllWhisperModels() {
+        downloadError = nil
+        Task {
+            for model in downloadedModels {
+                do {
+                    try await modelManager.deleteModel(model)
+                } catch {
+                    await MainActor.run {
+                        downloadError = error.localizedDescription
+                    }
+                }
+            }
+            loadModelStates()
         }
     }
 
