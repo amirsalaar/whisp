@@ -3,6 +3,7 @@ import SwiftUI
 internal struct DashboardHistoryView: View {
     @State private var records: [TranscriptionRecord] = []
     @State private var isLoading = true
+    @State private var showClearConfirmation = false
 
     var body: some View {
         Group {
@@ -17,6 +18,25 @@ internal struct DashboardHistoryView: View {
         }
         .task {
             await loadRecords()
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                if !records.isEmpty {
+                    Button(role: .destructive) {
+                        showClearConfirmation = true
+                    } label: {
+                        Label("Clear History", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .alert("Clear all history?", isPresented: $showClearConfirmation) {
+            Button("Clear", role: .destructive) {
+                Task { await clearHistory() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete all transcription records.")
         }
     }
 
@@ -88,5 +108,10 @@ internal struct DashboardHistoryView: View {
         isLoading = true
         records = await DataManager.shared.fetchAllRecordsQuietly()
         isLoading = false
+    }
+
+    private func clearHistory() async {
+        try? await DataManager.shared.deleteAllRecords()
+        records = []
     }
 }
