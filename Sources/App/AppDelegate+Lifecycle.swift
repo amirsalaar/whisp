@@ -55,6 +55,11 @@ extension AppDelegate {
 
         configureShortcutMonitors()
 
+        // Auto-open dashboard on first launch so onboarding sheet is presented
+        if !UserDefaults.standard.bool(forKey: AppDefaults.Keys.hasCompletedWelcome) {
+            DashboardWindowManager.shared.showDashboardWindow()
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationChanged),

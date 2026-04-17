@@ -110,6 +110,8 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
 // MARK: - Main Dashboard View
 internal struct DashboardView: View {
     @ObservedObject var selectionModel: DashboardSelectionModel
+    @AppStorage(AppDefaults.Keys.hasCompletedWelcome) private var hasCompletedWelcome = false
+    @State private var showOnboarding = false
 
     init(selectionModel: DashboardSelectionModel = DashboardSelectionModel()) {
         self.selectionModel = selectionModel
@@ -168,6 +170,15 @@ internal struct DashboardView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView(isPresented: $showOnboarding)
+                .interactiveDismissDisabled()
+        }
+        .onAppear {
+            if !hasCompletedWelcome {
+                showOnboarding = true
             }
         }
     }
