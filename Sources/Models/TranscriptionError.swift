@@ -136,29 +136,29 @@ internal enum TranscriptionError {
     var userMessage: String {
         switch self {
         case .missingAPIKey(let provider):
-            return "\(provider) API key is required. Please add your API key in Settings."
+            return "\(provider) API key is required. Add your key in Settings."
         case .invalidAPIKey(let provider):
-            return "Invalid \(provider) API key. Please check your API key in Settings."
+            return "Invalid \(provider) API key. Check your key in Settings."
         case .microphonePermissionDenied:
-            return "Microphone access was denied. Please grant permission in System Settings > Privacy & Security > Microphone."
+            return "Microphone access denied. Open System Settings to grant access."
         case .microphonePermissionRestricted:
-            return "Microphone access is restricted. Please check System Settings > Privacy & Security > Microphone."
+            return "Microphone access is restricted. Check System Settings to grant access."
         case .microphoneUnavailable:
-            return "No microphone available. Please connect a microphone and try again."
+            return "No microphone found. Connect a microphone and try again."
         case .networkConnectionError:
-            return "Network connection error. Please check your internet connection and try again."
+            return "Cannot reach the server. Check your internet connection."
         case .networkTimeout:
-            return "Request timed out. Please check your connection and try again."
+            return "Request timed out. Check your connection and try again."
         case .transcriptionFailed(let reason):
             return reason
         case .audioProcessingError:
-            return "Failed to process audio. Please try recording again."
+            return "Could not process audio. Try recording again."
         case .modelNotFound(let model):
-            return "Model '\(model)' not found. Please download it in Settings."
+            return "Model \"\(model)\" not found. Download it in Settings."
         case .insufficientStorage:
-            return "Insufficient storage space. Please free up some space and try again."
+            return "Not enough disk space. Free up storage or reduce the model storage limit in Preferences."
         case .pythonConfigurationError:
-            return "Python configuration error. Please check your Python path and ensure parakeet-mlx is installed."
+            return "Parakeet cannot find Python. Open Settings to configure."
         case .generalError(let message):
             return message
         }
