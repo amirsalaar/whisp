@@ -389,16 +389,17 @@ internal final class FnGlobeMonitor {
     private func scheduleActivation() {
         cancelPendingActivation()
 
-        guard holdDelay > 0 else {
-            activateFnIfEligible()
-            return
-        }
-
         let workItem = DispatchWorkItem { [weak self] in
             self?.activateFnIfEligible()
         }
 
         pendingActivationWorkItem = workItem
+
+        guard holdDelay > 0 else {
+            DispatchQueue.main.async(execute: workItem)
+            return
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + holdDelay, execute: workItem)
     }
 

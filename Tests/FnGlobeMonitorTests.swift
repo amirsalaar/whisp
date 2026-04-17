@@ -103,6 +103,43 @@ final class FnGlobeMonitorTests: XCTestCase {
         wait(for: [keyDownExpectation], timeout: 1.0)
     }
 
+    func testToggleModeDoesNotActivateWhenModifierAlreadyHeldWithFn() {
+        let keyDownExpectation = expectation(description: "keyDown")
+        keyDownExpectation.isInverted = true
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            mode: .toggle,
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.handleFlagsChanged(
+            keyCode: Int64(PressAndHoldKey.globe.keyCode), flags: [.maskSecondaryFn, .maskShift]
+        )
+
+        wait(for: [keyDownExpectation], timeout: 0.2)
+    }
+
+    func testToggleModeDoesNotActivateWhenModifierFollowsFnInSameSequence() {
+        let keyDownExpectation = expectation(description: "keyDown")
+        keyDownExpectation.isInverted = true
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            mode: .toggle,
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.handleFlagsChanged(keyCode: Int64(PressAndHoldKey.globe.keyCode), flags: [.maskSecondaryFn])
+        monitor.handleFlagsChanged(keyCode: 56, flags: [.maskSecondaryFn, .maskShift])
+
+        wait(for: [keyDownExpectation], timeout: 0.2)
+    }
+
     func testCapsLockDoesNotCancelFunctionKeyActivation() {
         let keyDownExpectation = expectation(description: "keyDown")
 
