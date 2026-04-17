@@ -19,6 +19,88 @@ internal enum OnboardingStep: Int, CaseIterable {
     }
 }
 
+internal enum OnboardingPressAndHoldKeyChangeDecision: Equatable {
+    case persist(PressAndHoldKey)
+    case requireConfirmation(previousSelection: PressAndHoldKey, pendingSelection: PressAndHoldKey)
+}
+
+internal enum OnboardingPressAndHoldKeySelectionResolver {
+    static func resolveChange(
+        from oldValue: String,
+        to newValue: String,
+        warningAcknowledged: Bool
+    ) -> OnboardingPressAndHoldKeyChangeDecision {
+        let previousSelection = PressAndHoldKey(rawValue: oldValue) ?? PressAndHoldConfiguration.defaults.key
+        let pendingSelection = PressAndHoldKey(rawValue: newValue) ?? PressAndHoldConfiguration.defaults.key
+
+        if pendingSelection == .globe && !warningAcknowledged {
+            return .requireConfirmation(
+                previousSelection: previousSelection,
+                pendingSelection: pendingSelection
+            )
+        }
+
+        return .persist(pendingSelection)
+    }
+}
+
+internal struct OnboardingPressAndHoldSelectionState: Equatable {
+    var persistedKeyIdentifier: String
+    var pickerSelection: String
+    var previousKeyIdentifier: String
+    var pendingKeyIdentifier: String?
+    var showFnWarningConfirmation: Bool
+}
+
+internal enum OnboardingPressAndHoldSelectionCoordinator {
+    static func handlePickerChange(
+        state: inout OnboardingPressAndHoldSelectionState,
+        from oldValue: String,
+        to newValue: String,
+        warningAcknowledged: Bool
+    ) -> String? {
+        switch OnboardingPressAndHoldKeySelectionResolver.resolveChange(
+            from: oldValue,
+            to: newValue,
+            warningAcknowledged: warningAcknowledged
+        ) {
+        case let .persist(key):
+            state.persistedKeyIdentifier = key.rawValue
+            state.pickerSelection = key.rawValue
+            state.previousKeyIdentifier = key.rawValue
+            state.pendingKeyIdentifier = nil
+            state.showFnWarningConfirmation = false
+            return key.rawValue
+
+        case let .requireConfirmation(previousSelection, pendingSelection):
+            state.previousKeyIdentifier = previousSelection.rawValue
+            state.pendingKeyIdentifier = pendingSelection.rawValue
+            state.pickerSelection = previousSelection.rawValue
+            state.showFnWarningConfirmation = true
+            return nil
+        }
+    }
+
+    static func confirmPendingSelection(
+        state: inout OnboardingPressAndHoldSelectionState,
+        fallbackKeyIdentifier: String = PressAndHoldKey.globe.rawValue
+    ) -> String {
+        let confirmedIdentifier = state.pendingKeyIdentifier ?? fallbackKeyIdentifier
+        state.persistedKeyIdentifier = confirmedIdentifier
+        state.pickerSelection = confirmedIdentifier
+        state.previousKeyIdentifier = confirmedIdentifier
+        state.pendingKeyIdentifier = nil
+        state.showFnWarningConfirmation = false
+        return confirmedIdentifier
+    }
+
+    static func cancelPendingSelection(state: inout OnboardingPressAndHoldSelectionState) {
+        state.pendingKeyIdentifier = nil
+        state.pickerSelection = state.previousKeyIdentifier
+        state.showFnWarningConfirmation = false
+    }
+}
+
 // MARK: - Onboarding View
 
 internal struct OnboardingView: View {
@@ -53,6 +135,21 @@ internal struct OnboardingView: View {
         PressAndHoldConfiguration.defaults.key.rawValue
     @AppStorage(AppDefaults.Keys.pressAndHoldMode) private var pressAndHoldModeRaw =
         PressAndHoldConfiguration.defaults.mode.rawValue
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnWarningAcknowledged) private
+        var pressAndHoldFnWarningAcknowledged = false
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnReadiness) private var pressAndHoldFnReadinessRaw =
+        FnGlobeHotkeyReadiness.requiresAcknowledgement.rawValue
+    @AppStorage(AppDefaults.Keys.pressAndHoldFnFailureMessage) private var pressAndHoldFnFailureMessage =
+        ""
+    @AppStorage(AppDefaults.Keys.pressAndHoldModifierReadiness) private
+        var pressAndHoldModifierReadinessRaw =
+        PressAndHoldHotkeyReadiness.requiresInputMonitoring.rawValue
+    @AppStorage(AppDefaults.Keys.pressAndHoldModifierFailureMessage) private
+        var pressAndHoldModifierFailureMessage = ""
+    @State private var hotkeyPickerSelection = PressAndHoldConfiguration.defaults.key.rawValue
+    @State private var previousPressAndHoldKeyIdentifier = PressAndHoldConfiguration.defaults.key.rawValue
+    @State private var pendingPressAndHoldKeyIdentifier: String?
+    @State private var showFnWarningConfirmation = false
 
     // Smart Paste
     @AppStorage(AppDefaults.Keys.enableSmartPaste) private var enableSmartPaste = true
@@ -71,6 +168,7 @@ internal struct OnboardingView: View {
     @State private var downloadError: String?
 
     private let keychainService: KeychainServiceProtocol = KeychainService.shared
+    private let inputMonitoringPermissionManager = InputMonitoringPermissionManager()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -605,16 +703,22 @@ internal struct OnboardingView: View {
                 }
                 .toggleStyle(.switch)
                 .frame(maxWidth: 360)
+                .onChange(of: pressAndHoldEnabled) { _, _ in
+                    publishPressAndHoldConfiguration()
+                }
 
                 if pressAndHoldEnabled {
                     VStack(spacing: 12) {
-                        Picker("Key", selection: $pressAndHoldKeyIdentifier) {
+                        Picker("Key", selection: $hotkeyPickerSelection) {
                             ForEach(PressAndHoldKey.allCases, id: \.rawValue) { key in
                                 Text(key.displayName).tag(key.rawValue)
                             }
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260)
+                        .onChange(of: hotkeyPickerSelection) { oldValue, newValue in
+                            handlePressAndHoldKeyChange(from: oldValue, to: newValue)
+                        }
 
                         Picker("Behavior", selection: $pressAndHoldModeRaw) {
                             ForEach(PressAndHoldMode.allCases, id: \.rawValue) { mode in
@@ -623,6 +727,15 @@ internal struct OnboardingView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260)
+                        .onChange(of: pressAndHoldModeRaw) { _, _ in
+                            publishPressAndHoldConfiguration()
+                        }
+
+                        if isFnGlobeSelected {
+                            fnGlobeSetupSection
+                        } else {
+                            modifierKeySetupSection
+                        }
                     }
                     .padding(16)
                     .background(
@@ -645,6 +758,113 @@ internal struct OnboardingView: View {
                 primaryAction: { advance(to: .smartPaste) }
             )
         }
+        .onAppear {
+            syncPressAndHoldConfiguration()
+            refreshCurrentHotkeySetup(notify: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            syncPressAndHoldConfiguration()
+            refreshCurrentHotkeySetup()
+        }
+        .alert("Enable Fn / Globe Mode?", isPresented: $showFnWarningConfirmation) {
+            Button("Cancel", role: .cancel) {
+                var state = hotkeySelectionState
+                OnboardingPressAndHoldSelectionCoordinator.cancelPendingSelection(state: &state)
+                applyHotkeySelectionState(state)
+            }
+
+            Button("Enable Fn / Globe") {
+                FnGlobeHotkeyPreferenceStore.setWarningAcknowledged(true)
+                _ = inputMonitoringPermissionManager.requestPermission()
+                var state = hotkeySelectionState
+                let confirmedIdentifier = OnboardingPressAndHoldSelectionCoordinator.confirmPendingSelection(
+                    state: &state
+                )
+                applyHotkeySelectionState(state)
+                applyPressAndHoldKeyIdentifier(confirmedIdentifier)
+            }
+        } message: {
+            Text(
+                "Fn / Globe requires extra setup:\n\n1. Grant Input Monitoring permission.\n2. In System Settings > Keyboard, set Press Globe key to Do Nothing.\n3. If it still does not work, quit and reopen Whisp."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var fnGlobeSetupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(fnGlobeStatusTitle, systemImage: fnGlobeStatusIcon)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(fnGlobeStatusColor)
+
+            Text(fnGlobeStatusMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                if fnGlobeReadiness == .requiresAcknowledgement {
+                    Button("Enable Fn / Globe Mode") {
+                        showFnWarningConfirmation = true
+                    }
+                }
+
+                if fnGlobeReadiness == .requiresInputMonitoring {
+                    Button("Request Access") {
+                        _ = inputMonitoringPermissionManager.requestPermission()
+                        refreshFnGlobeSetup()
+                    }
+                }
+
+                if showsFnGlobeSettingsActions {
+                    Button("Open Settings") {
+                        inputMonitoringPermissionManager.openSystemSettings()
+                    }
+
+                    Button("Refresh Status") {
+                        refreshFnGlobeSetup()
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private var modifierKeySetupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(modifierKeyStatusTitle, systemImage: modifierKeyStatusIcon)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(modifierKeyStatusColor)
+
+            Text(modifierKeyStatusMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                if modifierKeyReadiness == .requiresInputMonitoring {
+                    Button("Grant Access") {
+                        _ = inputMonitoringPermissionManager.requestPermission()
+                        refreshModifierKeySetup()
+                    }
+                }
+
+                if modifierKeyReadiness == .requiresInputMonitoring
+                    || modifierKeyReadiness == .awaitingVerification
+                    || modifierKeyReadiness == .unavailable
+                {
+                    Button("Open Settings") {
+                        inputMonitoringPermissionManager.openSystemSettings()
+                    }
+
+                    Button("Refresh Status") {
+                        refreshModifierKeySetup()
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+        .padding(.top, 4)
     }
 
     // MARK: - Smart Paste & Accessibility
@@ -818,6 +1038,7 @@ internal struct OnboardingView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
+                        .disabled(testRecorder != nil)
 
                         Text("Say something short, like \"Hello, this is a test.\"")
                             .font(.caption)
@@ -1023,6 +1244,106 @@ internal struct OnboardingView: View {
         }
     }
 
+    private var selectedPressAndHoldKey: PressAndHoldKey {
+        PressAndHoldKey(rawValue: hotkeyPickerSelection) ?? PressAndHoldConfiguration.defaults.key
+    }
+
+    private var selectedPressAndHoldMode: PressAndHoldMode {
+        PressAndHoldMode(rawValue: pressAndHoldModeRaw) ?? PressAndHoldConfiguration.defaults.mode
+    }
+
+    private var currentPressAndHoldConfiguration: PressAndHoldConfiguration {
+        PressAndHoldConfiguration(
+            enabled: pressAndHoldEnabled,
+            key: selectedPressAndHoldKey,
+            mode: selectedPressAndHoldMode
+        )
+    }
+
+    private var hotkeySelectionState: OnboardingPressAndHoldSelectionState {
+        OnboardingPressAndHoldSelectionState(
+            persistedKeyIdentifier: pressAndHoldKeyIdentifier,
+            pickerSelection: hotkeyPickerSelection,
+            previousKeyIdentifier: previousPressAndHoldKeyIdentifier,
+            pendingKeyIdentifier: pendingPressAndHoldKeyIdentifier,
+            showFnWarningConfirmation: showFnWarningConfirmation
+        )
+    }
+
+    private var isFnGlobeSelected: Bool {
+        currentPressAndHoldConfiguration.isFnGlobeEnabled
+    }
+
+    private var fnGlobeReadiness: FnGlobeHotkeyReadiness {
+        FnGlobeHotkeyReadiness(rawValue: pressAndHoldFnReadinessRaw) ?? .requiresAcknowledgement
+    }
+
+    private var fnGlobeStatusTitle: String {
+        fnGlobeReadiness.title
+    }
+
+    private var fnGlobeStatusIcon: String {
+        fnGlobeReadiness.statusSymbolName
+    }
+
+    private var fnGlobeStatusColor: Color {
+        switch fnGlobeReadiness {
+        case .ready:
+            return Color(nsColor: .systemGreen)
+        case .unavailable:
+            return Color(nsColor: .systemRed)
+        default:
+            return Color(nsColor: .systemOrange)
+        }
+    }
+
+    private var fnGlobeStatusMessage: String {
+        FnGlobeHotkeyPreferenceStore.message(
+            for: fnGlobeReadiness,
+            failureMessage: pressAndHoldFnFailureMessage
+        )
+    }
+
+    private var showsFnGlobeSettingsActions: Bool {
+        switch fnGlobeReadiness {
+        case .requiresInputMonitoring, .awaitingVerification, .unavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var modifierKeyReadiness: PressAndHoldHotkeyReadiness {
+        PressAndHoldHotkeyReadiness(rawValue: pressAndHoldModifierReadinessRaw)
+            ?? .requiresInputMonitoring
+    }
+
+    private var modifierKeyStatusTitle: String {
+        modifierKeyReadiness.title
+    }
+
+    private var modifierKeyStatusIcon: String {
+        modifierKeyReadiness.statusSymbolName
+    }
+
+    private var modifierKeyStatusColor: Color {
+        switch modifierKeyReadiness {
+        case .ready:
+            return Color(nsColor: .systemGreen)
+        case .unavailable:
+            return Color(nsColor: .systemRed)
+        default:
+            return Color(nsColor: .systemOrange)
+        }
+    }
+
+    private var modifierKeyStatusMessage: String {
+        PressAndHoldHotkeyPreferenceStore.message(
+            for: modifierKeyReadiness,
+            failureMessage: pressAndHoldModifierFailureMessage
+        )
+    }
+
     private func loadExistingAPIKey() {
         let account = transcriptionProvider == .openai ? "OpenAI" : "Gemini"
         if let existing = keychainService.getQuietly(service: "Whisp", account: account), !existing.isEmpty {
@@ -1033,6 +1354,121 @@ internal struct OnboardingView: View {
 
     private func checkModelReady() {
         modelReady = WhisperKitStorage.isModelDownloaded(selectedWhisperModel)
+    }
+
+    private func publishPressAndHoldConfiguration() {
+        let configuration = currentPressAndHoldConfiguration
+
+        PressAndHoldSettings.update(configuration)
+        refreshCurrentHotkeySetup(for: configuration, notify: false)
+        previousPressAndHoldKeyIdentifier = configuration.key.rawValue
+    }
+
+    private func applyHotkeySelectionState(_ state: OnboardingPressAndHoldSelectionState) {
+        pressAndHoldKeyIdentifier = state.persistedKeyIdentifier
+        hotkeyPickerSelection = state.pickerSelection
+        previousPressAndHoldKeyIdentifier = state.previousKeyIdentifier
+        pendingPressAndHoldKeyIdentifier = state.pendingKeyIdentifier
+        showFnWarningConfirmation = state.showFnWarningConfirmation
+    }
+
+    private func syncPressAndHoldConfiguration() {
+        let configuration = PressAndHoldSettings.configuration()
+
+        if pressAndHoldEnabled != configuration.enabled {
+            pressAndHoldEnabled = configuration.enabled
+        }
+
+        if pressAndHoldKeyIdentifier != configuration.key.rawValue {
+            pressAndHoldKeyIdentifier = configuration.key.rawValue
+        }
+
+        if hotkeyPickerSelection != configuration.key.rawValue {
+            hotkeyPickerSelection = configuration.key.rawValue
+        }
+
+        previousPressAndHoldKeyIdentifier = configuration.key.rawValue
+        pendingPressAndHoldKeyIdentifier = nil
+
+        if pressAndHoldModeRaw != configuration.mode.rawValue {
+            pressAndHoldModeRaw = configuration.mode.rawValue
+        }
+    }
+
+    private func handlePressAndHoldKeyChange(from oldValue: String, to newValue: String) {
+        var state = hotkeySelectionState
+        let keyIdentifierToPublish = OnboardingPressAndHoldSelectionCoordinator.handlePickerChange(
+            state: &state,
+            from: oldValue,
+            to: newValue,
+            warningAcknowledged: pressAndHoldFnWarningAcknowledged
+        )
+        applyHotkeySelectionState(state)
+
+        if let keyIdentifierToPublish {
+            applyPressAndHoldKeyIdentifier(keyIdentifierToPublish)
+        }
+    }
+
+    private func applyPressAndHoldKeyIdentifier(_ keyIdentifier: String) {
+        if hotkeyPickerSelection != keyIdentifier {
+            hotkeyPickerSelection = keyIdentifier
+        }
+
+        if pressAndHoldKeyIdentifier != keyIdentifier {
+            pressAndHoldKeyIdentifier = keyIdentifier
+        }
+
+        previousPressAndHoldKeyIdentifier = keyIdentifier
+        publishPressAndHoldConfiguration()
+    }
+
+    private func refreshCurrentHotkeySetup(
+        for configuration: PressAndHoldConfiguration? = nil,
+        notify: Bool = true
+    ) {
+        let configuration = configuration ?? currentPressAndHoldConfiguration
+        guard configuration.enabled else { return }
+
+        if configuration.isFnGlobeEnabled {
+            refreshFnGlobeSetup(for: configuration, notify: notify)
+        } else {
+            refreshModifierKeySetup(for: configuration, notify: notify)
+        }
+    }
+
+    private func refreshFnGlobeSetup(
+        for configuration: PressAndHoldConfiguration? = nil,
+        notify: Bool = true
+    ) {
+        let configuration = configuration ?? currentPressAndHoldConfiguration
+        guard configuration.isFnGlobeEnabled else { return }
+
+        FnGlobeHotkeyPreferenceStore.syncForConfiguration(
+            configuration,
+            inputMonitoringGranted: inputMonitoringPermissionManager.checkPermission()
+        )
+
+        if notify {
+            NotificationCenter.default.post(name: .pressAndHoldSettingsChanged, object: configuration)
+        }
+    }
+
+    private func refreshModifierKeySetup(
+        for configuration: PressAndHoldConfiguration? = nil,
+        notify: Bool = true
+    ) {
+        let configuration = configuration ?? currentPressAndHoldConfiguration
+        guard configuration.enabled, !configuration.isFnGlobeEnabled else { return }
+
+        PressAndHoldHotkeyPreferenceStore.syncForConfiguration(
+            configuration,
+            inputMonitoringGranted: inputMonitoringPermissionManager.checkPermission()
+        )
+
+        if notify {
+            NotificationCenter.default.post(name: .pressAndHoldSettingsChanged, object: configuration)
+        }
     }
 
     private func downloadModel() {
@@ -1058,6 +1494,8 @@ internal struct OnboardingView: View {
     // MARK: - Test Recording
 
     private func startTestRecording() {
+        guard testRecorder == nil, !isRecording, !isTranscribing else { return }
+
         let recorder = AudioRecorder()
         testRecorder = recorder
 
