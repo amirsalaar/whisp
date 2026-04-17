@@ -8,7 +8,7 @@ internal struct RecordingButton: View {
     let transcriptionProvider: TranscriptionProvider
     let onTap: () -> Void
     let onHover: (Bool) -> Void
-    
+
     var body: some View {
         Button(action: onTap) {
             Image(systemName: buttonIcon)
@@ -26,14 +26,17 @@ internal struct RecordingButton: View {
         .focusable(false)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
-        .disabled(isProcessing || !hasPermission || (showSuccess && !UserDefaults.standard.bool(forKey: "enableSmartPaste")))
+        .disabled(
+            isProcessing || !hasPermission
+                || (showSuccess && !UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste))
+        )
         .help(transcriptionProvider.displayName)
         .onHover(perform: onHover)
     }
-    
+
     private var buttonIcon: String {
         if showSuccess {
-            let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+            let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
             return enableSmartPaste ? "arrow.down.doc.on.clipboard" : "checkmark"
         } else if isRecording {
             return "stop.fill"
@@ -43,23 +46,25 @@ internal struct RecordingButton: View {
             return "mic.slash.fill"
         }
     }
-    
+
     private var buttonColor: Color {
         if showSuccess {
-            let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
-            return enableSmartPaste ? .green : .green  // Green for both paste and success
+            let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
+            return enableSmartPaste
+                ? Color(red: 0.30, green: 0.55, blue: 0.35)
+                : Color(red: 0.30, green: 0.55, blue: 0.35)
         } else if isRecording {
-            return .red
+            return Color(red: 0.85, green: 0.30, blue: 0.25)
         } else if hasPermission {
-            return .blue
+            return Color(red: 0.82, green: 0.58, blue: 0.16)
         } else {
             return .gray
         }
     }
-    
+
     private var accessibilityLabel: String {
         if showSuccess {
-            let enableSmartPaste = UserDefaults.standard.bool(forKey: "enableSmartPaste")
+            let enableSmartPaste = UserDefaults.standard.bool(forKey: AppDefaults.Keys.enableSmartPaste)
             return enableSmartPaste ? "Paste transcribed text" : "Transcription completed successfully"
         } else if isRecording {
             return "Stop recording"
@@ -71,7 +76,7 @@ internal struct RecordingButton: View {
             return "Start recording"
         }
     }
-    
+
     private var accessibilityHint: String {
         if showSuccess {
             return "Transcription is complete"

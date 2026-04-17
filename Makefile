@@ -1,14 +1,15 @@
-.PHONY: help build build-notarize install test clean reset-permissions release dmg
+.PHONY: help build build-notarize install test clean reset-permissions setup-local-signing release dmg
 
 SCRIPTS := scripts
 
 # Default target
 help:
-	@echo "VoiceFlow Makefile"
+	@echo "Whisp Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  install            - Build and install VoiceFlow to /Applications/ (recommended)"
-	@echo "  reset-permissions  - Reset and re-grant accessibility permission (fixes Smart Paste)"
+	@echo "  install            - Build and install Whisp to /Applications/ (recommended)"
+	@echo "  setup-local-signing - Create a stable local signing identity for development builds"
+	@echo "  reset-permissions  - Reset and re-grant Whisp privacy permissions"
 	@echo "  build              - Build the release app bundle"
 	@echo "  build-notarize     - Build and notarize the app"
 	@echo "  test               - Run tests"
@@ -16,13 +17,17 @@ help:
 	@echo "  dmg                - Create a DMG for distribution"
 	@echo "  release            - Create a new GitHub release"
 
-# Build and install VoiceFlow to /Applications/
+# Build and install Whisp to /Applications/
 install:
-	$(SCRIPTS)/install-voiceflow.sh
+	$(SCRIPTS)/install-whisp.sh
 
 # Reset accessibility permissions (fixes Smart Paste after rebuild)
 reset-permissions:
 	$(SCRIPTS)/reset-accessibility.sh
+
+# Create a persistent local signing identity so privacy permissions survive rebuilds
+setup-local-signing:
+	$(SCRIPTS)/setup-local-signing.sh
 
 # Build the app
 build:
@@ -39,8 +44,8 @@ test:
 # Clean build artifacts
 clean:
 	rm -rf .build
-	rm -rf VoiceFlow.app
-	rm -f VoiceFlow.zip
+	rm -rf Whisp.app
+	rm -f Whisp.zip
 	rm -f *.dmg
 
 # Create a DMG for distribution
@@ -53,8 +58,8 @@ release:
 	echo "Creating release v$$VERSION..."; \
 	if git diff --quiet && git diff --cached --quiet; then \
 		$(SCRIPTS)/build.sh && \
-		zip -r VoiceFlow.zip VoiceFlow.app && \
-		gh release create "v$$VERSION" VoiceFlow.zip --title "v$$VERSION" --generate-notes && \
+		zip -r Whisp.zip Whisp.app && \
+		gh release create "v$$VERSION" Whisp.zip --title "v$$VERSION" --generate-notes && \
 		echo "✅ Release v$$VERSION created"; \
 	else \
 		echo "❌ Error: Working directory is not clean. Commit or stash changes first."; \

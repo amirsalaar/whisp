@@ -116,6 +116,8 @@ Temporary Items
 .apdisk
 
 # App specific
+Whisp.app/
+Whisp.zip
 VoiceFlow.app/
 VoiceFlow.zip
 *.dmg
@@ -126,6 +128,16 @@ __pycache__
 # Environment
 .env
 .env.local
+Whisp.iconset/
 VoiceFlow.iconset/
 .build-uv/
 .beads/
+
+# Local benchmark artifacts
+Benchmarks/*.local.json
+Benchmarks/fixtures/*
+!Benchmarks/fixtures/.gitkeep
+!Benchmarks/fixtures/README.md
+Benchmarks/results/*
+!Benchmarks/results/.gitkeep
+!Benchmarks/results/README.md

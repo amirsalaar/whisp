@@ -10,7 +10,7 @@ private actor VerificationMessageStore {
     func stderrMessage() -> String { stderr }
 }
 
-internal extension DashboardProvidersView {
+extension DashboardProvidersView {
     // MARK: - Parakeet Section
     @ViewBuilder
     var parakeetCard: some View {
@@ -27,9 +27,11 @@ internal extension DashboardProvidersView {
                             .controlSize(.small)
                     }
 
-                    Label(envReady ? "Ready" : "Setup required",
-                          systemImage: envReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(envReady ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
+                    Label(
+                        envReady ? "Ready" : "Setup required",
+                        systemImage: envReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(envReady ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
 
                     if !envReady {
                         Button("Install…") {
@@ -60,9 +62,22 @@ internal extension DashboardProvidersView {
                     if isDownloading {
                         ProgressView().controlSize(.small)
                     } else if isDownloaded {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
-                            .help("Downloaded")
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color(nsColor: .systemGreen))
+                                .help("Downloaded")
+
+                            Button {
+                                mlxRepoToDelete = repo
+                                showMLXDeleteConfirm = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Delete model")
+                        }
                     } else {
                         Button("Get") { Task { await mlxModelManager.ensureParakeetModel() } }
                             .buttonStyle(.borderedProminent)
@@ -82,6 +97,13 @@ internal extension DashboardProvidersView {
                 Text(msg)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+
+            if isDownloaded {
+                ModelStorageInfoView(
+                    path: HuggingFaceCache.modelDirectory(for: repo).path,
+                    sizeText: mlxModelManager.modelSizes[repo].map { mlxModelManager.formatBytes($0) }
+                )
             }
 
             Label("Runs locally on Apple Silicon • ~2.5 GB disk space", systemImage: "apple.logo")
@@ -120,7 +142,9 @@ internal extension DashboardProvidersView {
                 await MainActor.run {
                     isSettingUp = false
                     setupStatus = "✗ Setup failed"
-                    let msg = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
+                    let msg =
+                        error.localizedDescription.isEmpty
+                        ? String(describing: error) : error.localizedDescription
                     setupLogs += (setupLogs.isEmpty ? "" : "\n") + "Error: \(msg)"
                     envReady = false
                 }
@@ -158,8 +182,10 @@ internal extension DashboardProvidersView {
     }
 
     private func venvPythonPath() -> String {
-        let appSupport = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
-        let base = appSupport?.appendingPathComponent("VoiceFlow/python_project/.venv/bin/python3").path
+        let appSupport =
+            (try? FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
+        let base = appSupport?.appendingPathComponent("Whisp/python_project/.venv/bin/python3").path
         return base ?? ""
     }
 
@@ -184,8 +210,10 @@ internal extension DashboardProvidersView {
                 }
                 let repoToVerify = selectedParakeetModel.repoId
                 process.arguments = [scriptURL.path, repoToVerify]
-                let out = Pipe(); let err = Pipe()
-                process.standardOutput = out; process.standardError = err
+                let out = Pipe()
+                let err = Pipe()
+                process.standardOutput = out
+                process.standardError = err
 
                 let messageStore = VerificationMessageStore()
                 out.fileHandleForReading.readabilityHandler = { handle in
@@ -193,8 +221,9 @@ internal extension DashboardProvidersView {
                     guard !data.isEmpty, let s = String(data: data, encoding: .utf8) else { return }
                     for line in s.split(separator: "\n").map(String.init) {
                         if let d = line.data(using: .utf8),
-                           let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                           let msg = j["message"] as? String {
+                            let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                            let msg = j["message"] as? String
+                        {
                             Task {
                                 await messageStore.updateStdout(msg)
                                 await MainActor.run { parakeetVerifyMessage = msg }
@@ -226,12 +255,14 @@ internal extension DashboardProvidersView {
                 await MainActor.run {
                     isVerifyingParakeet = false
                     if process.terminationStatus == 0 {
-                        parakeetVerifyMessage = (lastStdoutMessage.isEmpty ? "Model verified" : lastStdoutMessage)
+                        parakeetVerifyMessage =
+                            (lastStdoutMessage.isEmpty ? "Model verified" : lastStdoutMessage)
                         hasSetupParakeet = true
                         Task { await MLXModelManager.shared.refreshModelList() }
                     } else {
                         let msg = lastStdoutMessage.isEmpty ? lastStderrMessage : lastStdoutMessage
-                        parakeetVerifyMessage = msg.isEmpty ? "Verification failed" : "Verification failed: \(msg)"
+                        parakeetVerifyMessage =
+                            msg.isEmpty ? "Verification failed" : "Verification failed: \(msg)"
                     }
                 }
             } catch {

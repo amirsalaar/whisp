@@ -34,7 +34,7 @@ internal actor MLDaemonManager {
         let completion: (Result<Data, Error>) -> Void
     }
 
-    private let logger = Logger(subsystem: "com.voiceflow.app", category: "MLDaemon")
+    private let logger = Logger(subsystem: "com.whisp.app", category: "MLDaemon")
     private let maxRestartAttempts = 3
 
     private var process: Process?
@@ -48,14 +48,18 @@ internal actor MLDaemonManager {
     private var stdoutReaderTask: Task<Void, Never>?
     private var pythonExecutable: URL?
     private var scriptLocation: URL?
-#if DEBUG
-    private var testResponder: ((String, [String: Any]) throws -> Any)?
-#endif
+    #if DEBUG
+        private var testResponder: ((String, [String: Any]) throws -> Any)?
+    #endif
 
     // MARK: - Public API
 
     func transcribe(repo: String, pcmPath: String) async throws -> String {
-        struct TranscribeResult: Decodable { let success: Bool; let text: String; let error: String? }
+        struct TranscribeResult: Decodable {
+            let success: Bool
+            let text: String
+            let error: String?
+        }
         let result: TranscribeResult = try await sendRequest(
             method: "transcribe",
             params: ["repo": repo, "pcm_path": pcmPath]
@@ -65,11 +69,46 @@ internal actor MLDaemonManager {
     }
 
     func correct(repo: String, text: String, prompt: String?) async throws -> String {
-        struct CorrectionResult: Decodable { let success: Bool; let text: String; let error: String? }
+        struct CorrectionResult: Decodable {
+            let success: Bool
+            let text: String
+            let error: String?
+        }
         var params: [String: Any] = ["repo": repo, "text": text]
         if let prompt = prompt { params["prompt"] = prompt }
         let result: CorrectionResult = try await sendRequest(method: "correct", params: params)
         guard result.success else { throw MLDaemonError.remoteError(result.error ?? "Correction failed") }
+        return result.text
+    }
+
+    func gemmaTranscribe(repo: String, audioPath: String, prompt: String? = nil) async throws -> String {
+        struct GemmaResult: Decodable {
+            let success: Bool
+            let text: String
+            let error: String?
+        }
+        var params: [String: Any] = ["repo": repo, "audio_path": audioPath]
+        if let prompt = prompt { params["prompt"] = prompt }
+        let result: GemmaResult = try await sendRequest(method: "gemma_transcribe", params: params)
+        guard result.success else {
+            throw MLDaemonError.remoteError(result.error ?? "Gemma transcription failed")
+        }
+        return result.text
+    }
+
+    func whisperMLXTranscribe(repo: String, audioPath: String) async throws -> String {
+        struct WhisperMLXResult: Decodable {
+            let success: Bool
+            let text: String
+            let error: String?
+        }
+        let result: WhisperMLXResult = try await sendRequest(
+            method: "whisper_mlx_transcribe",
+            params: ["repo": repo, "audio_path": audioPath]
+        )
+        guard result.success else {
+            throw MLDaemonError.remoteError(result.error ?? "Whisper MLX transcription failed")
+        }
         return result.text
     }
 
@@ -91,18 +130,20 @@ internal actor MLDaemonManager {
 
     // MARK: - Core JSON-RPC plumbing
 
-    private func sendRequest<Response: Decodable>(method: String, params: [String: Any]) async throws -> Response {
-#if DEBUG
-        if let testResponder {
-            let resultObject = try testResponder(method, params)
-            let data = try JSONSerialization.data(withJSONObject: resultObject, options: [])
-            do {
-                return try JSONDecoder().decode(Response.self, from: data)
-            } catch {
-                throw MLDaemonError.invalidResponse(error.localizedDescription)
+    private func sendRequest<Response: Decodable>(method: String, params: [String: Any]) async throws
+        -> Response
+    {
+        #if DEBUG
+            if let testResponder {
+                let resultObject = try testResponder(method, params)
+                let data = try JSONSerialization.data(withJSONObject: resultObject, options: [])
+                do {
+                    return try JSONDecoder().decode(Response.self, from: data)
+                } catch {
+                    throw MLDaemonError.invalidResponse(error.localizedDescription)
+                }
             }
-        }
-#endif
+        #endif
         try ensureDaemonRunning()
 
         let requestID = nextRequestID
@@ -111,7 +152,7 @@ internal actor MLDaemonManager {
         var payload: [String: Any] = [
             "jsonrpc": "2.0",
             "id": requestID,
-            "method": method
+            "method": method,
         ]
         if !params.isEmpty {
             payload["params"] = params
@@ -123,9 +164,10 @@ internal actor MLDaemonManager {
         }
 
         writer.write(data)
-        writer.write(Data([0x0a])) // newline
+        writer.write(Data([0x0a]))  // newline
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Response, Error>) in
+        return try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Response, Error>) in
             pending[requestID] = PendingRequest { result in
                 switch result {
                 case .success(let responseData):
@@ -133,7 +175,8 @@ internal actor MLDaemonManager {
                         let decoded = try JSONDecoder().decode(Response.self, from: responseData)
                         continuation.resume(returning: decoded)
                     } catch {
-                        continuation.resume(throwing: MLDaemonError.invalidResponse(error.localizedDescription))
+                        continuation.resume(
+                            throwing: MLDaemonError.invalidResponse(error.localizedDescription))
                     }
                 case .failure(let error):
                     continuation.resume(throwing: error)
@@ -161,7 +204,8 @@ internal actor MLDaemonManager {
         }
 
         if let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
+            let message = error["message"] as? String
+        {
             pendingRequest.completion(.failure(MLDaemonError.remoteError(message)))
             return
         }
@@ -198,7 +242,10 @@ internal actor MLDaemonManager {
         let proc = Process()
         proc.executableURL = python
         proc.arguments = [script.path]
-        proc.environment = ProcessInfo.processInfo.environment.merging(["PYTHONUNBUFFERED": "1"]) { _, new in new }
+        proc.environment = ProcessInfo.processInfo.environment.merging([
+            "PYTHONUNBUFFERED": "1",
+            "HF_HOME": HuggingFaceCache.homeDirectory().path,
+        ]) { _, new in new }
 
         let stdin = Pipe()
         let stdout = Pipe()
@@ -238,8 +285,7 @@ internal actor MLDaemonManager {
         let handle = pipe.fileHandleForReading
         stdoutReaderTask = Task { [weak self] in
             do {
-                for try await line in handle.bytes.lines {
-                    guard !line.isEmpty else { continue }
+                for try await line in handle.bytes.lines where !line.isEmpty {
                     await self?.handle(line: line)
                 }
             } catch is CancellationError {
@@ -326,25 +372,25 @@ internal actor MLDaemonManager {
 }
 
 #if DEBUG
-internal extension MLDaemonManager {
-    func setTestResponder(_ responder: ((String, [String: Any]) throws -> Any)?) {
-        testResponder = responder
-    }
+    extension MLDaemonManager {
+        func setTestResponder(_ responder: ((String, [String: Any]) throws -> Any)?) {
+            testResponder = responder
+        }
 
-    /// Allows tests to bypass the default Python resolution and bundled script lookup.
-    func setTestOverrides(python: URL?, script: URL?) async {
-        pythonExecutable = python
-        scriptLocation = script
-    }
+        /// Allows tests to bypass the default Python resolution and bundled script lookup.
+        func setTestOverrides(python: URL?, script: URL?) async {
+            pythonExecutable = python
+            scriptLocation = script
+        }
 
-    /// Resets state for isolation between tests, ensuring processes are terminated and overrides cleared.
-    func resetForTesting() async {
-        await shutdown()
-        pythonExecutable = nil
-        scriptLocation = nil
-        restartAttempts = 0
-        isShuttingDown = false
-        testResponder = nil
+        /// Resets state for isolation between tests, ensuring processes are terminated and overrides cleared.
+        func resetForTesting() async {
+            await shutdown()
+            pythonExecutable = nil
+            scriptLocation = nil
+            restartAttempts = 0
+            isShuttingDown = false
+            testResponder = nil
+        }
     }
-}
 #endif

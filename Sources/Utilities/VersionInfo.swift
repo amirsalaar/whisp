@@ -2,9 +2,9 @@ import Foundation
 
 struct VersionInfo {
     static let version = "2.1.0"
-    static let gitHash = "67a910d7cc7447231d23f781b98fb0691e14967e"
-    static let buildDate = "2026-04-13"
-    
+    static let gitHash = "42ad2d87ea56af5f9410390e4bb2c36c16f452d4"
+    static let buildDate = "2026-04-16"
+
     static var displayVersion: String {
         if gitHash != "dev-build" && gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
@@ -12,9 +12,9 @@ struct VersionInfo {
         }
         return version
     }
-    
+
     static var fullVersionInfo: String {
-        var info = "VoiceFlow \(version)"
+        var info = "Whisp \(version)"
         if gitHash != "dev-build" && gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
             info += " • \(shortHash)"

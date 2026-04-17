@@ -1,6 +1,6 @@
-# Contributing to VoiceFlow
+# Contributing to Whisp
 
-Thank you for your interest in contributing to VoiceFlow! This guide covers development setup, testing, and distribution.
+Thank you for your interest in contributing to Whisp! This guide covers development setup, testing, and distribution.
 
 ## Development Setup
 
@@ -13,8 +13,9 @@ Thank you for your interest in contributing to VoiceFlow! This guide covers deve
 ### Initial Setup
 
 ```bash
-git clone https://github.com/jacobsurber/VoiceFlow.git
-cd VoiceFlow
+git clone https://github.com/amirsalaar/Whisp.git
+cd Whisp
+make setup-local-signing
 swift build
 ```
 
@@ -54,9 +55,9 @@ Creates a universal binary (Apple Silicon + Intel) app bundle with icon and Info
 ### Signed + Notarized Build
 
 ```bash
-export VOICEFLOW_APPLE_ID='your-apple-id@example.com'
-export VOICEFLOW_APPLE_PASSWORD='app-specific-password'
-export VOICEFLOW_TEAM_ID='your-team-id'
+export WHISP_APPLE_ID='your-apple-id@example.com'
+export WHISP_APPLE_PASSWORD='app-specific-password'
+export WHISP_TEAM_ID='your-team-id'
 make build-notarize
 ```
 
@@ -71,17 +72,20 @@ The build script auto-detects Developer ID certificates from your keychain. To v
 security find-identity -v -p codesigning
 
 # Verify app signature
-codesign --verify --verbose VoiceFlow.app
+codesign --verify --verbose Whisp.app
 
 # Check Gatekeeper approval
-spctl -a -v VoiceFlow.app
+spctl -a -v Whisp.app
 ```
 
-Without a Developer ID, the app gets ad-hoc signed. Recipients must right-click > Open on first launch.
+Without a Developer ID, Whisp now prefers any stable local code-signing identity it can find, including a locally generated development identity. If no stable identity exists, the app falls back to ad-hoc signing and macOS privacy permissions can reset after each rebuild.
+
+For local development, run `make setup-local-signing` once to generate a persistent self-signed code-signing identity in your login keychain. That keeps Microphone, Accessibility, and Input Monitoring permissions stable across rebuilds.
 
 ## Architecture Overview
 
 ### Technology Stack
+
 - **SwiftUI** + **AppKit** — UI and menu bar integration
 - **AVFoundation** — Audio recording
 - **Alamofire** — HTTP requests
@@ -89,8 +93,9 @@ Without a Developer ID, the app gets ad-hoc signed. Recipients must right-click 
 - **Keychain** — Secure API key storage
 
 ### Project Structure
+
 ```
-VoiceFlow/
+Whisp/
 ├── Sources/
 │   ├── App/              # AppDelegate, lifecycle, hotkeys
 │   ├── Managers/         # HotKey, PressAndHold, Paste, Permissions
@@ -119,13 +124,16 @@ VoiceFlow/
 ## Common Issues
 
 ### Permission Issues After Rebuild
-Ad-hoc signing means macOS invalidates Accessibility permissions on each rebuild. See [ACCESSIBILITY-FIX.md](ACCESSIBILITY-FIX.md).
+
+Ad-hoc signing can invalidate Microphone, Accessibility, and Input Monitoring permissions after each rebuild. Run `make setup-local-signing` before your first install to avoid this, or use `make reset-permissions` to re-grant permissions after a rebuild. See [ACCESSIBILITY-FIX.md](ACCESSIBILITY-FIX.md).
 
 ### Safe-to-Ignore Warnings
+
 These Apple framework warnings are harmless:
+
 - `AddInstanceForFactory: No factory registered...`
 - `LoudnessManager.mm: unknown value: Mac16,13`
 
 ## License
 
-By contributing to VoiceFlow, you agree that your contributions will be licensed under the MIT License.
+By contributing to Whisp, you agree that your contributions will be licensed under the MIT License.

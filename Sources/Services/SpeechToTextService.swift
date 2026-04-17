@@ -1,7 +1,7 @@
-import Foundation
 import Alamofire
-import os.log
+import Foundation
 import Observation
+import os.log
 
 internal enum SpeechToTextError: Error, LocalizedError {
     case invalidURL
@@ -9,7 +9,7 @@ internal enum SpeechToTextError: Error, LocalizedError {
     case transcriptionFailed(String)
     case localTranscriptionFailed(Error)
     case fileTooLarge
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidURL:
@@ -33,6 +33,8 @@ internal enum SpeechToTextError: Error, LocalizedError {
 internal class SpeechToTextService {
     private let localWhisperService = LocalWhisperService()
     private let parakeetService = ParakeetService()
+    private let gemmaService = GemmaService()
+    private let whisperMLXService = WhisperMLXService()
     private let keychainService: KeychainServiceProtocol
     private let correctionService = SemanticCorrectionService()
 
@@ -54,7 +56,8 @@ internal class SpeechToTextService {
                 return try await operation()
             } catch {
                 lastError = error
-                Logger.speechToText.warning("Attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")
+                Logger.speechToText.warning(
+                    "Attempt \(attempt)/\(maxAttempts) failed: \(error.localizedDescription)")
 
                 if attempt < maxAttempts {
                     // Exponential backoff: 1s, 2s, 4s
@@ -65,7 +68,8 @@ internal class SpeechToTextService {
             }
         }
 
-        throw lastError ?? SpeechToTextError.transcriptionFailed("Unknown error after \(maxAttempts) attempts")
+        throw lastError
+            ?? SpeechToTextError.transcriptionFailed("Unknown error after \(maxAttempts) attempts")
     }
 
     /// Add timeout protection to prevent API calls from hanging forever
@@ -79,7 +83,8 @@ internal class SpeechToTextService {
             }
             group.addTask {
                 try await Task.sleep(for: duration)
-                throw SpeechToTextError.transcriptionFailed("Request timed out after \(duration.components.seconds)s")
+                throw SpeechToTextError.transcriptionFailed(
+                    "Request timed out after \(duration.components.seconds)s")
             }
 
             let result = try await group.next()!
@@ -89,7 +94,9 @@ internal class SpeechToTextService {
     }
 
     // Raw transcription without semantic correction
-    func transcribeRaw(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws -> String {
+    func transcribeRaw(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil)
+        async throws -> String
+    {
         // Validate audio file before processing
         let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
         switch validationResult {
@@ -109,12 +116,16 @@ internal class SpeechToTextService {
             return try await transcribeWithLocal(audioURL: audioURL, model: model)
         case .parakeet:
             return try await transcribeWithParakeet(audioURL: audioURL)
+        case .gemma:
+            return try await transcribeWithGemma(audioURL: audioURL)
+        case .whisperMLX:
+            return try await transcribeWithWhisperMLX(audioURL: audioURL)
         }
     }
 
     func transcribe(audioURL: URL) async throws -> String {
         let useOpenAI = UserDefaults.standard.bool(forKey: "useOpenAI")
-        if useOpenAI != false { // Default to OpenAI if not set
+        if useOpenAI != false {  // Default to OpenAI if not set
             let text = try await transcribeWithOpenAI(audioURL: audioURL)
             return await correctionService.correct(text: text, providerUsed: .openai)
         } else {
@@ -122,17 +133,19 @@ internal class SpeechToTextService {
             return await correctionService.correct(text: text, providerUsed: .gemini)
         }
     }
-    
-    func transcribe(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws -> String {
+
+    func transcribe(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws
+        -> String
+    {
         // Validate audio file before processing
         let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
         switch validationResult {
         case .valid(_):
-            break // Audio file validated successfully
+            break  // Audio file validated successfully
         case .invalid(let error):
             throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
         }
-        
+
         switch provider {
         case .openai:
             let text = try await withTimeout(.seconds(30)) {
@@ -159,9 +172,15 @@ internal class SpeechToTextService {
         case .parakeet:
             let text = try await transcribeWithParakeet(audioURL: audioURL)
             return await correctionService.correct(text: text, providerUsed: .parakeet)
+        case .gemma:
+            // Gemma combines transcription + correction in one pass; skip separate correction
+            return try await transcribeWithGemma(audioURL: audioURL)
+        case .whisperMLX:
+            let text = try await transcribeWithWhisperMLX(audioURL: audioURL)
+            return await correctionService.correct(text: text, providerUsed: .whisperMLX)
         }
     }
-    
+
     private var geminiBaseURL: String {
         let custom = UserDefaults.standard.string(forKey: "geminiBaseURL") ?? ""
         if custom.isEmpty {
@@ -197,7 +216,7 @@ internal class SpeechToTextService {
 
     private func transcribeWithOpenAI(audioURL: URL) async throws -> String {
         // Get API key from keychain
-        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "OpenAI") else {
+        guard let apiKey = keychainService.getQuietly(service: "Whisp", account: "OpenAI") else {
             throw SpeechToTextError.apiKeyMissing("OpenAI")
         }
 
@@ -227,22 +246,23 @@ internal class SpeechToTextService {
                     let cleanedText = Self.cleanTranscriptionText(whisperResponse.text)
                     continuation.resume(returning: cleanedText)
                 case .failure(let error):
-                    continuation.resume(throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
+                    continuation.resume(
+                        throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
                 }
             }
         }
     }
-    
+
     private func transcribeWithGemini(audioURL: URL) async throws -> String {
         // Get API key from keychain
-        guard let apiKey = keychainService.getQuietly(service: "VoiceFlow", account: "Gemini") else {
+        guard let apiKey = keychainService.getQuietly(service: "Whisp", account: "Gemini") else {
             throw SpeechToTextError.apiKeyMissing("Gemini")
         }
-        
+
         // Check file size to decide on upload method
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
         let fileSize = fileAttributes[.size] as? Int64 ?? 0
-        
+
         // Use Files API for larger files (>10MB) to avoid memory issues
         if fileSize > 10 * 1024 * 1024 {
             return try await transcribeWithGeminiFilesAPI(audioURL: audioURL, apiKey: apiKey)
@@ -250,23 +270,25 @@ internal class SpeechToTextService {
             return try await transcribeWithGeminiInline(audioURL: audioURL, apiKey: apiKey)
         }
     }
-    
+
     private func transcribeWithGeminiFilesAPI(audioURL: URL, apiKey: String) async throws -> String {
         // First, upload the file using Files API
         let fileUploadURL = "\(geminiBaseURL)/upload/v1beta/files"
-        
+
         let uploadHeaders: HTTPHeaders = [
             "X-Goog-Api-Key": apiKey
         ]
-        
+
         // Upload file using multipart form data
-        let uploadedFile = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GeminiFileResponse, Error>) in
+        let uploadedFile = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<GeminiFileResponse, Error>) in
             AF.upload(
                 multipartFormData: { multipartFormData in
                     multipartFormData.append(audioURL, withName: "file")
                     let metadata = ["file": ["display_name": "audio_recording"]]
                     if let metadataData = try? JSONSerialization.data(withJSONObject: metadata) {
-                        multipartFormData.append(metadataData, withName: "metadata", mimeType: "application/json")
+                        multipartFormData.append(
+                            metadataData, withName: "metadata", mimeType: "application/json")
                     }
                 },
                 to: fileUploadURL,
@@ -277,88 +299,107 @@ internal class SpeechToTextService {
                 case .success(let fileResponse):
                     continuation.resume(returning: fileResponse)
                 case .failure(let error):
-                    continuation.resume(throwing: SpeechToTextError.transcriptionFailed("File upload failed: \(error.localizedDescription)"))
+                    continuation.resume(
+                        throwing: SpeechToTextError.transcriptionFailed(
+                            "File upload failed: \(error.localizedDescription)"))
                 }
             }
         }
-        
+
         // Now use the uploaded file for transcription
         let transcriptionURL = "\(geminiBaseURL)/v1beta/models/gemini-2.5-flash-lite:generateContent"
-        
+
         let headers: HTTPHeaders = [
             "X-Goog-Api-Key": apiKey,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         ]
-        
+
         let body: [String: Any] = [
-            "contents": [[
-                "parts": [[
-                    "file_data": [
-                        "mime_type": "audio/mp4",
-                        "file_uri": uploadedFile.file.uri
+            "contents": [
+                [
+                    "parts": [
+                        [
+                            "file_data": [
+                                "mime_type": "audio/mp4",
+                                "file_uri": uploadedFile.file.uri,
+                            ]
+                        ],
+                        [
+                            "text":
+                                "Transcribe this audio to text. Return only the transcription without any additional text."
+                        ],
                     ]
-                ], [
-                    "text": "Transcribe this audio to text. Return only the transcription without any additional text."
-                ]]
-            ]]
+                ]
+            ]
         ]
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            AF.request(transcriptionURL, method: .post, parameters: body, encoding: JSONEncoding.default, headers: headers)
-                .responseDecodable(of: GeminiResponse.self) { response in
-                    switch response.result {
-                    case .success(let geminiResponse):
-                        if let text = geminiResponse.candidates.first?.content.parts.first?.text {
-                            let cleanedText = Self.cleanTranscriptionText(text)
-                            continuation.resume(returning: cleanedText)
-                        } else {
-                            continuation.resume(throwing: SpeechToTextError.transcriptionFailed("No text in response"))
-                        }
-                    case .failure(let error):
-                        continuation.resume(throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
+            AF.request(
+                transcriptionURL, method: .post, parameters: body, encoding: JSONEncoding.default,
+                headers: headers
+            )
+            .responseDecodable(of: GeminiResponse.self) { response in
+                switch response.result {
+                case .success(let geminiResponse):
+                    if let text = geminiResponse.candidates.first?.content.parts.first?.text {
+                        let cleanedText = Self.cleanTranscriptionText(text)
+                        continuation.resume(returning: cleanedText)
+                    } else {
+                        continuation.resume(
+                            throwing: SpeechToTextError.transcriptionFailed("No text in response"))
                     }
+                case .failure(let error):
+                    continuation.resume(
+                        throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
                 }
+            }
         }
     }
-    
+
     private func transcribeWithGeminiInline(audioURL: URL, apiKey: String) async throws -> String {
         // For smaller files, use inline data to avoid the extra upload step
         // Double-check file size for safety
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
         let fileSize = fileAttributes[.size] as? Int64 ?? 0
-        
+
         // Enforce stricter memory limit for inline processing
-        if fileSize > 5 * 1024 * 1024 { // 5MB limit
+        if fileSize > 5 * 1024 * 1024 {  // 5MB limit
             throw SpeechToTextError.fileTooLarge
         }
-        
+
         let audioData = try Data(contentsOf: audioURL)
-        
+
         // Use autoreleasepool to manage memory pressure
         let base64Audio = autoreleasepool {
             return audioData.base64EncodedString()
         }
-        
+
         let url = "\(geminiBaseURL)/v1beta/models/gemini-2.5-flash-lite:generateContent"
-        
+
         let headers: HTTPHeaders = [
             "X-Goog-Api-Key": apiKey,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         ]
-        
+
         let body: [String: Any] = [
-            "contents": [[
-                "parts": [[
-                    "inline_data": [
-                        "mime_type": "audio/mp4",
-                        "data": base64Audio
+            "contents": [
+                [
+                    "parts": [
+                        [
+                            "inline_data": [
+                                "mime_type": "audio/mp4",
+                                "data": base64Audio,
+                            ]
+                        ],
+                        [
+                            "text":
+                                "Transcribe this audio to text. Return only the transcription without any additional text."
+                        ],
                     ]
-                ], [
-                    "text": "Transcribe this audio to text. Return only the transcription without any additional text."
-                ]]
-            ]]
+                ]
+            ]
         ]
-        
+
         return try await withCheckedThrowingContinuation { continuation in
             AF.request(url, method: .post, parameters: body, encoding: JSONEncoding.default, headers: headers)
                 .responseDecodable(of: GeminiResponse.self) { response in
@@ -368,15 +409,17 @@ internal class SpeechToTextService {
                             let cleanedText = Self.cleanTranscriptionText(text)
                             continuation.resume(returning: cleanedText)
                         } else {
-                            continuation.resume(throwing: SpeechToTextError.transcriptionFailed("No text in response"))
+                            continuation.resume(
+                                throwing: SpeechToTextError.transcriptionFailed("No text in response"))
                         }
                     case .failure(let error):
-                        continuation.resume(throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
+                        continuation.resume(
+                            throwing: SpeechToTextError.transcriptionFailed(error.localizedDescription))
                     }
                 }
         }
     }
-    
+
     private func transcribeWithLocal(audioURL: URL, model: WhisperModel) async throws -> String {
         do {
             let text = try await localWhisperService.transcribe(audioFileURL: audioURL, model: model) { _ in
@@ -386,12 +429,14 @@ internal class SpeechToTextService {
             throw SpeechToTextError.localTranscriptionFailed(error)
         }
     }
-    
+
     private func transcribeWithParakeet(audioURL: URL) async throws -> String {
         guard Arch.isAppleSilicon else {
             throw SpeechToTextError.transcriptionFailed("Parakeet requires an Apple Silicon Mac.")
         }
-        let modeRaw = UserDefaults.standard.string(forKey: "semanticCorrectionMode") ?? SemanticCorrectionMode.off.rawValue
+        let modeRaw =
+            UserDefaults.standard.string(forKey: "semanticCorrectionMode")
+            ?? SemanticCorrectionMode.off.rawValue
         let semanticCorrectionMode = SemanticCorrectionMode(rawValue: modeRaw) ?? .off
         let shouldWarmup = semanticCorrectionMode != .off
         // Ensure managed Python environment with uv
@@ -399,13 +444,17 @@ internal class SpeechToTextService {
         let pythonPath = pyURL.path
         do {
             if shouldWarmup {
-                let modelRepo = UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionModelRepo) ?? AppDefaults.defaultSemanticCorrectionModelRepo
+                let modelRepo =
+                    UserDefaults.standard.string(forKey: AppDefaults.Keys.semanticCorrectionModelRepo)
+                    ?? AppDefaults.defaultSemanticCorrectionModelRepo
                 async let warmupTask: Void = MLDaemonManager.shared.warmup(type: "mlx", repo: modelRepo)
-                async let transcription = parakeetService.transcribe(audioFileURL: audioURL, pythonPath: pythonPath)
+                async let transcription = parakeetService.transcribe(
+                    audioFileURL: audioURL, pythonPath: pythonPath)
                 let (text, _) = try await (transcription, warmupTask)
                 return Self.cleanTranscriptionText(text)
             } else {
-                let text = try await parakeetService.transcribe(audioFileURL: audioURL, pythonPath: pythonPath)
+                let text = try await parakeetService.transcribe(
+                    audioFileURL: audioURL, pythonPath: pythonPath)
                 return Self.cleanTranscriptionText(text)
             }
         } catch {
@@ -416,13 +465,46 @@ internal class SpeechToTextService {
             throw SpeechToTextError.transcriptionFailed("Parakeet error: \(error.localizedDescription)")
         }
     }
-    
+
+    private func transcribeWithGemma(audioURL: URL) async throws -> String {
+        guard Arch.isAppleSilicon else {
+            throw SpeechToTextError.transcriptionFailed("Gemma requires an Apple Silicon Mac.")
+        }
+        // Ensure managed Python environment with uv
+        _ = try UvBootstrap.ensureVenv(userPython: nil)
+        do {
+            let text = try await gemmaService.transcribe(audioFileURL: audioURL)
+            return Self.cleanTranscriptionText(text)
+        } catch {
+            if let ge = error as? GemmaError, ge == .modelNotReady {
+                throw ge
+            }
+            throw SpeechToTextError.transcriptionFailed("Gemma error: \(error.localizedDescription)")
+        }
+    }
+
+    private func transcribeWithWhisperMLX(audioURL: URL) async throws -> String {
+        guard Arch.isAppleSilicon else {
+            throw SpeechToTextError.transcriptionFailed("Whisper MLX requires an Apple Silicon Mac.")
+        }
+        _ = try UvBootstrap.ensureVenv(userPython: nil)
+        do {
+            let text = try await whisperMLXService.transcribe(audioFileURL: audioURL)
+            return Self.cleanTranscriptionText(text)
+        } catch {
+            if let we = error as? WhisperMLXError, we == .modelNotReady {
+                throw we
+            }
+            throw SpeechToTextError.transcriptionFailed("Whisper MLX error: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Text Cleaning
-    
+
     /// Cleans transcription text by removing common markers and artifacts
     static func cleanTranscriptionText(_ text: String) -> String {
         var cleanedText = text
-        
+
         // Remove bracketed markers iteratively to handle nested cases
         var previousLength = 0
         while cleanedText.count != previousLength {
@@ -433,7 +515,7 @@ internal class SpeechToTextService {
                 options: .regularExpression
             )
         }
-        
+
         // Remove parenthetical markers iteratively to handle nested cases
         previousLength = 0
         while cleanedText.count != previousLength {
@@ -444,13 +526,14 @@ internal class SpeechToTextService {
                 options: .regularExpression
             )
         }
-        
+
         // Clean up whitespace and return
-        return cleanedText
+        return
+            cleanedText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
-    
+
 }
 
 // Response models

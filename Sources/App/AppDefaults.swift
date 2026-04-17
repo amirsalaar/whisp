@@ -16,6 +16,7 @@ internal enum AppDefaults {
         static let semanticCorrectionModelRepo = "semanticCorrectionModelRepo"
 
         static let startAtLogin = "startAtLogin"
+        static let floatingMicrophoneDockEnabled = "floatingMicrophoneDockEnabled"
         static let playCompletionSound = "playCompletionSound"
         static let transcriptionHistoryEnabled = "transcriptionHistoryEnabled"
         static let transcriptionRetentionPeriod = "transcriptionRetentionPeriod"
@@ -25,12 +26,20 @@ internal enum AppDefaults {
         static let pressAndHoldEnabled = "pressAndHoldEnabled"
         static let pressAndHoldKeyIdentifier = "pressAndHoldKeyIdentifier"
         static let pressAndHoldMode = "pressAndHoldMode"
+        static let pressAndHoldFnWarningAcknowledged = "pressAndHoldFnWarningAcknowledged"
+        static let pressAndHoldFnReadiness = "pressAndHoldFnReadiness"
+        static let pressAndHoldFnFailureMessage = "pressAndHoldFnFailureMessage"
 
         static let hasCompletedWelcome = "hasCompletedWelcome"
         static let lastWelcomeVersion = "lastWelcomeVersion"
 
         static let hasSetupLocalLLM = "hasSetupLocalLLM"
         static let hasSetupParakeet = "hasSetupParakeet"
+        static let hasSetupGemma = "hasSetupGemma"
+        static let hasSetupWhisperMLX = "hasSetupWhisperMLX"
+
+        static let selectedGemmaModel = "selectedGemmaModel"
+        static let selectedWhisperMLXModel = "selectedWhisperMLXModel"
     }
 
     // Bump when the welcome flow/content needs to be re-shown for existing users.
@@ -38,10 +47,12 @@ internal enum AppDefaults {
 
     // Chosen defaults.
     internal static let defaultTranscriptionProvider: TranscriptionProvider = .local
-    internal static let defaultWhisperModel: WhisperModel = .base
+    internal static let defaultWhisperModel: WhisperModel = .small
     internal static let defaultParakeetModel: ParakeetModel = .v3Multilingual
     internal static let defaultSemanticCorrectionMode: SemanticCorrectionMode = .off
     internal static let defaultSemanticCorrectionModelRepo: String = "mlx-community/Qwen3-1.7B-4bit"
+    internal static let defaultGemmaModel: GemmaModel = .e4b
+    internal static let defaultWhisperMLXModel: WhisperMLXModel = .largeTurbo
 
     internal static func register() {
         UserDefaults.standard.register(defaults: [
@@ -53,11 +64,12 @@ internal enum AppDefaults {
             Keys.semanticCorrectionModelRepo: defaultSemanticCorrectionModelRepo,
 
             Keys.startAtLogin: true,
+            Keys.floatingMicrophoneDockEnabled: true,
             Keys.playCompletionSound: true,
-            Keys.transcriptionHistoryEnabled: false,
+            Keys.transcriptionHistoryEnabled: true,
             Keys.transcriptionRetentionPeriod: RetentionPeriod.oneMonth.rawValue,
             Keys.maxModelStorageGB: 5.0,
-            Keys.enableSmartPaste: false,
+            Keys.enableSmartPaste: true,
 
             Keys.pressAndHoldEnabled: PressAndHoldConfiguration.defaults.enabled,
             Keys.pressAndHoldKeyIdentifier: PressAndHoldConfiguration.defaults.key.rawValue,
@@ -67,8 +79,11 @@ internal enum AppDefaults {
             Keys.lastWelcomeVersion: "0",
 
             Keys.hasSetupLocalLLM: false,
-            Keys.hasSetupParakeet: false
+            Keys.hasSetupParakeet: false,
+            Keys.hasSetupGemma: false,
+            Keys.hasSetupWhisperMLX: false,
+            Keys.selectedGemmaModel: defaultGemmaModel.rawValue,
+            Keys.selectedWhisperMLXModel: defaultWhisperMLXModel.rawValue,
         ])
     }
 }
-

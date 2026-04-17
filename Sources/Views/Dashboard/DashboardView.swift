@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 // MARK: - Dashboard Theme
 internal enum DashboardTheme {
@@ -79,9 +79,10 @@ internal enum DashboardTheme {
 // MARK: - Navigation Item
 internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
     case providers = "Transcription"
-    case recording = "Hotkeys"
-    case preferences = "General"
-    case permissions = "Permissions"
+    case recording = "Recording"
+    case history = "History"
+    case preferences = "Preferences"
+    case permissions = "Access"
 
     var id: String { rawValue }
 
@@ -89,6 +90,7 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .providers: return "waveform.circle"
         case .recording: return "keyboard"
+        case .history: return "clock.arrow.circlepath"
         case .preferences: return "gearshape"
         case .permissions: return "lock.shield"
         }
@@ -96,10 +98,11 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
 
     var description: String {
         switch self {
-        case .providers: return "Transcription provider and model settings"
-        case .recording: return "Configure keyboard shortcuts"
-        case .preferences: return "App behavior and preferences"
-        case .permissions: return "Required system permissions"
+        case .providers: return "Choose your engine and model"
+        case .recording: return "Microphone and shortcuts"
+        case .history: return "Past transcriptions"
+        case .preferences: return "Startup, paste, and sound"
+        case .permissions: return "Microphone and system access"
         }
     }
 }
@@ -117,7 +120,7 @@ internal struct DashboardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("VoiceFlow")
+                    Text("Whisp")
                         .font(.title2)
                         .fontWeight(.bold)
                     Text("Settings")
@@ -176,6 +179,8 @@ internal struct DashboardView: View {
             DashboardProvidersView()
         case .recording:
             DashboardRecordingView()
+        case .history:
+            DashboardHistoryView()
         case .preferences:
             DashboardPreferencesView()
         case .permissions:
@@ -187,6 +192,7 @@ internal struct DashboardView: View {
 // MARK: - Preview
 #Preview("Dashboard") {
     DashboardView()
-        .frame(width: LayoutMetrics.DashboardWindow.previewSize.width,
-               height: LayoutMetrics.DashboardWindow.previewSize.height)
+        .frame(
+            width: LayoutMetrics.DashboardWindow.previewSize.width,
+            height: LayoutMetrics.DashboardWindow.previewSize.height)
 }

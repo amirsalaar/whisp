@@ -1,74 +1,72 @@
 #!/bin/bash
 #
 # reset-accessibility.sh
-# Resets and re-grants accessibility permission for VoiceFlow
+# Resets and re-grants Whisp privacy permissions after a rebuild
 #
 
 set -e
 
-BUNDLE_ID="com.voiceflow.app"
-APP_PATH="/Applications/VoiceFlow.app"
+BUNDLE_ID="com.whisp.app"
+APP_PATH="/Applications/Whisp.app"
 
-echo "🔧 VoiceFlow Accessibility Permission Reset"
-echo "=========================================="
+echo "🔧 Whisp Privacy Permission Reset"
+echo "====================================="
 echo ""
 
 # Check if app exists
 if [ ! -d "$APP_PATH" ]; then
-    echo "❌ VoiceFlow not found at $APP_PATH"
+    echo "❌ Whisp not found at $APP_PATH"
     echo "   Run 'make install' first"
     exit 1
 fi
 
-echo "📍 Found VoiceFlow at: $APP_PATH"
+echo "📍 Found Whisp at: $APP_PATH"
 echo "🆔 Bundle ID: $BUNDLE_ID"
 echo ""
 
-# Step 1: Quit VoiceFlow
-echo "1️⃣  Quitting VoiceFlow..."
-pkill -x VoiceFlow 2>/dev/null && sleep 1 || echo "   (VoiceFlow was not running)"
+# Step 1: Quit Whisp
+echo "1️⃣  Quitting Whisp..."
+pkill -x Whisp 2>/dev/null && sleep 1 || echo "   (Whisp was not running)"
 
-# Step 2: Try to reset TCC database (requires SIP disabled or Full Disk Access)
+# Step 2: Try to reset TCC database (best effort)
 echo ""
-echo "2️⃣  Attempting to reset accessibility permission..."
-if tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null; then
-    echo "   ✅ Permission reset successful!"
-else
-    echo "   ⚠️  Cannot reset automatically (expected on modern macOS)"
-    echo "   📖 Manual step required:"
-    echo ""
-    echo "      1. Open System Settings → Privacy & Security → Accessibility"
-    echo "      2. Find 'VoiceFlow' in the list"
-    echo "      3. Click the (-) minus button to REMOVE it"
-    echo "      4. Remove ALL VoiceFlow entries if you see multiple"
-    echo ""
-    read -p "      Press ENTER when you've removed VoiceFlow from Accessibility... " -r
-fi
+echo "2️⃣  Attempting to reset Whisp privacy permissions..."
 
-# Step 3: Launch VoiceFlow
+reset_service() {
+    local service="$1"
+    if tccutil reset "$service" "$BUNDLE_ID" 2>/dev/null; then
+        echo "   ✅ Reset $service"
+    else
+        echo "   ⚠️  Could not reset $service automatically"
+    fi
+}
+
+reset_service Microphone
+reset_service Accessibility
+reset_service ListenEvent
+
+# Step 3: Launch Whisp
 echo ""
-echo "3️⃣  Launching VoiceFlow..."
+echo "3️⃣  Launching Whisp..."
 open "$APP_PATH"
 sleep 2
 
 # Step 4: Instructions for re-granting permission
 echo ""
-echo "4️⃣  Now grant accessibility permission:"
+echo "4️⃣  Now re-grant permissions as needed:"
 echo ""
-echo "   • VoiceFlow should show a permission dialog"
-echo "   • Click 'Grant Permission'"
-echo "   • System Settings will open to Accessibility"
-echo "   • Click the (+) plus button"
-echo "   • Select VoiceFlow.app from Applications"
-echo "   • Ensure the toggle is ON"
+echo "   • Microphone: try recording once and click Allow"
+echo "   • Accessibility: System Settings → Privacy & Security → Accessibility"
+echo "   • Input Monitoring: System Settings → Privacy & Security → Input Monitoring"
+echo "   • If old Whisp entries remain, remove them before re-adding /Applications/Whisp.app"
 echo ""
-echo "5️⃣  Test Smart Paste:"
+echo "5️⃣  Test Whisp:"
 echo ""
 echo "   • Open Notes or TextEdit"
 echo "   • Click in a text field"
-echo "   • Press and hold Left Control key"
+echo "   • Try your normal recording trigger"
 echo "   • Speak something (e.g., 'Testing smart paste')"
-echo "   • Release Control key"
+echo "   • Release the key or stop recording"
 echo "   • Text should auto-paste after transcription"
 echo ""
 echo "✅ Script complete! Follow the steps above to finish setup."

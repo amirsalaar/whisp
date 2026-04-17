@@ -1,12 +1,17 @@
 #!/bin/bash
+set -euo pipefail
 
-# VoiceFlow Release Build Script
+# Whisp Release Build Script
 # For development, use: swift build && swift run
 # This script is for creating distributable releases
 
 # Change to repo root (parent of scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.." || exit 1
+
+source "$SCRIPT_DIR/swiftpm-preflight.sh"
+ensure_swiftpm_manifest_is_healthy "$PWD" || exit 1
+source "$SCRIPT_DIR/signing-common.sh"
 
 # Parse command line arguments
 NOTARIZE=false
@@ -30,9 +35,9 @@ BUILD_DATE=$(date '+%Y-%m-%d')
 
 # Read version from VERSION file or use environment variable
 DEFAULT_VERSION=$(cat VERSION | tr -d '[:space:]')
-VERSION="${VOICEFLOW_VERSION:-$DEFAULT_VERSION}"
+VERSION="${WHISP_VERSION:-$DEFAULT_VERSION}"
 
-echo "🎙️ Building VoiceFlow version $VERSION..."
+echo "🎙️ Building Whisp version $VERSION..."
 
 # Update Info.plist with current version
 if [ -f "Info.plist" ]; then
@@ -49,7 +54,7 @@ fi
 
 # Clean previous builds
 rm -rf .build/release
-rm -rf VoiceFlow.app
+rm -rf Whisp.app
 rm -f Sources/AudioProcessorCLI
 
 # Create version file from template
@@ -68,7 +73,7 @@ struct VersionInfo {
     static let version = "$VERSION"
     static let gitHash = "$GIT_HASH"
     static let buildDate = "$BUILD_DATE"
-    
+
     static var displayVersion: String {
         if gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
@@ -76,9 +81,9 @@ struct VersionInfo {
         }
         return version
     }
-    
+
     static var fullVersionInfo: String {
-        var info = "VoiceFlow \(version)"
+        var info = "Whisp \(version)"
         if gitHash != "unknown" && !gitHash.isEmpty {
             let shortHash = String(gitHash.prefix(7))
             info += " • \(shortHash)"
@@ -97,44 +102,44 @@ echo "📦 Building for release..."
 swift build -c release --arch arm64 --arch x86_64
 
 # Check for the actual binary instead of exit code (swift-collections emits spurious errors)
-if [ ! -f ".build/apple/Products/Release/VoiceFlow" ]; then
+if [ ! -f ".build/apple/Products/Release/Whisp" ]; then
   echo "❌ Build failed - binary not found!"
   exit 1
 fi
 
 # Create app bundle
 echo "Creating app bundle..."
-mkdir -p VoiceFlow.app/Contents/MacOS
-mkdir -p VoiceFlow.app/Contents/Resources
-mkdir -p VoiceFlow.app/Contents/Resources/bin
+mkdir -p Whisp.app/Contents/MacOS
+mkdir -p Whisp.app/Contents/Resources
+mkdir -p Whisp.app/Contents/Resources/bin
 
 # Set build number for Info.plist
 BUILD_NUMBER="${VERSION//./}"
 
 # Copy executable (universal binary)
-cp .build/apple/Products/Release/VoiceFlow VoiceFlow.app/Contents/MacOS/
+cp .build/apple/Products/Release/Whisp Whisp.app/Contents/MacOS/
 
 # Copy dashboard logo
 if [ -f "Sources/Resources/DashboardLogo.jpg" ]; then
-  cp Sources/Resources/DashboardLogo.jpg VoiceFlow.app/Contents/Resources/
+  cp Sources/Resources/DashboardLogo.jpg Whisp.app/Contents/Resources/
   echo "Copied dashboard logo"
 fi
 
 # Copy verify scripts
 if [ -f "Sources/verify_parakeet.py" ]; then
-  cp Sources/verify_parakeet.py VoiceFlow.app/Contents/Resources/
+  cp Sources/verify_parakeet.py Whisp.app/Contents/Resources/
   echo "Copied verify_parakeet.py"
 fi
 
 # Copy ML daemon entrypoint and package
 if [ -f "Sources/ml_daemon.py" ]; then
-  cp Sources/ml_daemon.py VoiceFlow.app/Contents/Resources/
+  cp Sources/ml_daemon.py Whisp.app/Contents/Resources/
   echo "Copied ML daemon entrypoint"
 fi
 if [ -d "Sources/ml" ]; then
-  cp -R Sources/ml VoiceFlow.app/Contents/Resources/
+  cp -R Sources/ml Whisp.app/Contents/Resources/
   # Remove __pycache__ directories
-  find VoiceFlow.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+  find Whisp.app/Contents/Resources/ml -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
   echo "Copied ml package"
 else
   echo "⚠️ Sources/ml package not found, ML daemon will not work"
@@ -142,14 +147,14 @@ fi
 
 # Bundle uv (Apple Silicon). Prefer repo copy; else fall back to system uv if available
 if [ -f "Sources/Resources/bin/uv" ]; then
-  cp Sources/Resources/bin/uv VoiceFlow.app/Contents/Resources/bin/uv
-  chmod +x VoiceFlow.app/Contents/Resources/bin/uv
+  cp Sources/Resources/bin/uv Whisp.app/Contents/Resources/bin/uv
+  chmod +x Whisp.app/Contents/Resources/bin/uv
   echo "Bundled uv binary (from repo)"
 else
   if command -v uv >/dev/null 2>&1; then
     UV_PATH=$(command -v uv)
-    cp "$UV_PATH" VoiceFlow.app/Contents/Resources/bin/uv
-    chmod +x VoiceFlow.app/Contents/Resources/bin/uv
+    cp "$UV_PATH" Whisp.app/Contents/Resources/bin/uv
+    chmod +x Whisp.app/Contents/Resources/bin/uv
     echo "Bundled uv binary (from system: $UV_PATH)"
   else
     echo "ℹ️ No bundled uv found and no system uv available; runtime will try PATH"
@@ -158,7 +163,7 @@ fi
 
 # Bundle pyproject.toml and uv.lock if present
 if [ -f "Sources/Resources/pyproject.toml" ]; then
-  cp Sources/Resources/pyproject.toml VoiceFlow.app/Contents/Resources/pyproject.toml
+  cp Sources/Resources/pyproject.toml Whisp.app/Contents/Resources/pyproject.toml
   echo "Bundled pyproject.toml"
 else
   echo "ℹ️ No pyproject.toml found in Sources/Resources"
@@ -168,7 +173,7 @@ fi
 
 # Create proper Info.plist
 echo "Creating Info.plist..."
-cat >VoiceFlow.app/Contents/Info.plist <<EOF
+cat >Whisp.app/Contents/Info.plist <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -176,13 +181,13 @@ cat >VoiceFlow.app/Contents/Info.plist <<EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>VoiceFlow</string>
+    <string>Whisp</string>
     <key>CFBundleIdentifier</key>
-    <string>com.voiceflow.app</string>
+    <string>com.whisp.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>VoiceFlow</string>
+    <string>Whisp</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -192,7 +197,7 @@ cat >VoiceFlow.app/Contents/Info.plist <<EOF
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>VoiceFlow needs access to your microphone to record audio for transcription.</string>
+    <string>Whisp needs access to your microphone to record audio for transcription.</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -223,27 +228,27 @@ cat >VoiceFlow.app/Contents/Info.plist <<EOF
 EOF
 
 # Generate app icon from our source image
-if [ -f "VoiceFlowIcon.png" ]; then
+if [ -f "WhispIcon.png" ]; then
   "$SCRIPT_DIR/generate-icons.sh"
 
   # Create proper icns file directly in app bundle
   if command -v iconutil >/dev/null 2>&1; then
-    iconutil -c icns VoiceFlow.iconset -o VoiceFlow.app/Contents/Resources/AppIcon.icns 2>/dev/null || echo "Note: iconutil failed, app will use default icon"
+    iconutil -c icns Whisp.iconset -o Whisp.app/Contents/Resources/AppIcon.icns 2>/dev/null || echo "Note: iconutil failed, app will use default icon"
   fi
 
   # Clean up temporary files
-  rm -rf VoiceFlow.iconset
+  rm -rf Whisp.iconset
   rm -f AppIcon.icns # Remove any stray icns file from root
 else
-  echo "⚠️ VoiceFlowIcon.png not found, app will use default icon"
+  echo "⚠️ WhispIcon.png not found, app will use default icon"
 fi
 
 # Make executable
-chmod +x VoiceFlow.app/Contents/MacOS/VoiceFlow
+chmod +x Whisp.app/Contents/MacOS/Whisp
 
 # Create entitlements file for hardened runtime
 echo "Creating entitlements for hardened runtime..."
-cat >VoiceFlow.entitlements <<'EOF'
+cat >Whisp.entitlements <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -256,83 +261,68 @@ cat >VoiceFlow.entitlements <<'EOF'
 </plist>
 EOF
 
-# Function to sign the app with a given identity
-sign_app() {
-  local identity="$1"
-  local identity_name="$2"
-
-  if [ -n "$identity_name" ]; then
-    echo "🔏 Code signing app with: $identity_name ($identity)"
-  else
-    echo "🔏 Code signing app with: $identity"
-  fi
-
-  # Sign uv binary if present (nested executable)
-  if [ -f "VoiceFlow.app/Contents/Resources/bin/uv" ]; then
-    codesign --force --sign "$identity" --options runtime --entitlements VoiceFlow.entitlements VoiceFlow.app/Contents/Resources/bin/uv
-  fi
-
-  codesign --force --deep --sign "$identity" --options runtime --entitlements VoiceFlow.entitlements VoiceFlow.app
-  if [ $? -eq 0 ]; then
-    echo "🔍 Verifying signature..."
-    codesign --verify --verbose VoiceFlow.app
-    echo "✅ App signed successfully"
-    return 0
-  else
-    echo "❌ Code signing failed"
-    return 1
-  fi
-}
-
-# Optional: Code sign the app (requires Apple Developer account)
-SIGNING_IDENTITY=""
-SIGNING_NAME=""
-
-if [ -n "$CODE_SIGN_IDENTITY" ]; then
-  SIGNING_IDENTITY="$CODE_SIGN_IDENTITY"
-else
-  # Try to auto-detect Developer ID (use the first one found)
-  DETECTED_HASH=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk '{print $2}')
-  DETECTED_NAME=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk '{print $3}' | tr -d '"')
-  if [ -n "$DETECTED_HASH" ]; then
-    echo "🔍 Auto-detected signing identity: $DETECTED_NAME"
-    SIGNING_IDENTITY="$DETECTED_HASH"
-    SIGNING_NAME="$DETECTED_NAME"
-  fi
-fi
+# Code sign the app. Prefer a stable identity so macOS privacy permissions persist across rebuilds.
+SIGNING_IDENTITY="$(whisp_detect_signing_identity || true)"
+SIGNING_NAME="$(whisp_detect_signing_identity_name || true)"
 
 if [ -n "$SIGNING_IDENTITY" ]; then
-  sign_app "$SIGNING_IDENTITY" "$SIGNING_NAME"
+  if [ -n "$SIGNING_NAME" ]; then
+    echo "🔍 Using signing identity: $SIGNING_NAME"
+  fi
+
+  echo "🔏 Code signing app with stable identity..."
+  whisp_sign_app_bundle \
+    "Whisp.app" \
+    "Whisp.entitlements" \
+    "Whisp.app/Contents/Resources/bin/uv" \
+    "$SIGNING_IDENTITY"
 else
-  echo "💡 No Developer ID found. App will be unsigned."
-  echo "💡 To sign the app, get a Developer ID certificate from Apple Developer Portal."
+  echo "⚠️  No stable signing identity found. Falling back to ad-hoc signing."
+  echo "⚠️  macOS may re-prompt for Microphone, Accessibility, and Input Monitoring after each rebuild."
+  echo "💡 Run 'make setup-local-signing' once to create a persistent local signing identity for development."
+
+  whisp_sign_app_bundle \
+    "Whisp.app" \
+    "Whisp.entitlements" \
+    "Whisp.app/Contents/Resources/bin/uv"
 fi
 
+echo "🔍 Verifying signature..."
+codesign --verify --verbose Whisp.app
+echo "✅ App signed successfully"
+
 # Clean up entitlements file
-rm -f VoiceFlow.entitlements
+rm -f Whisp.entitlements
 
 # Notarization (requires code signing first)
 if [ "$NOTARIZE" = true ]; then
   echo ""
   echo "🔐 Starting notarization process..."
 
+  if ! whisp_is_developer_id_identity "$SIGNING_IDENTITY"; then
+    echo "❌ Notarization requires a Developer ID Application signing identity"
+    echo "   Current signing identity: ${SIGNING_NAME:-$SIGNING_IDENTITY}"
+    echo "   Provide CODE_SIGN_IDENTITY with a Developer ID Application certificate or install one in Keychain."
+    exit 1
+  fi
+
   # Check for required environment variables
-  if [ -z "$VOICEFLOW_APPLE_ID" ] || [ -z "$VOICEFLOW_APPLE_PASSWORD" ] || [ -z "$VOICEFLOW_TEAM_ID" ]; then
+  if [ -z "${WHISP_APPLE_ID:-}" ] || [ -z "${WHISP_APPLE_PASSWORD:-}" ] || [ -z "${WHISP_TEAM_ID:-}" ]; then
     echo "❌ Notarization requires the following environment variables:"
-    echo "   VOICEFLOW_APPLE_ID - Your Apple ID email"
-    echo "   VOICEFLOW_APPLE_PASSWORD - App-specific password for notarization"
-    echo "   VOICEFLOW_TEAM_ID - Your Apple Developer Team ID"
+    echo "   WHISP_APPLE_ID - Your Apple ID email"
+    echo "   WHISP_APPLE_PASSWORD - App-specific password for notarization"
+    echo "   WHISP_TEAM_ID - Your Apple Developer Team ID"
     echo ""
     echo "To create an app-specific password:"
     echo "1. Go to https://appleid.apple.com/account/manage"
     echo "2. Sign in and go to Security > App-Specific Passwords"
-    echo "3. Generate a new password for VoiceFlow notarization"
+    echo "3. Generate a new password for Whisp notarization"
     echo ""
     exit 1
   fi
 
   # Check if app is signed
-  if codesign -dvvv VoiceFlow.app 2>&1 | grep -q "Signature=adhoc"; then
+  if codesign -dvvv Whisp.app 2>&1 | grep -q "Signature=adhoc"; then
     echo "❌ App must be properly signed before notarization (not adhoc signed)"
     echo "Please ensure CODE_SIGN_IDENTITY is set or a Developer ID is available"
     exit 1
@@ -340,21 +330,21 @@ if [ "$NOTARIZE" = true ]; then
 
   # Create a zip file for notarization
   echo "Creating zip for notarization..."
-  ditto -c -k --keepParent VoiceFlow.app VoiceFlow.zip
+  ditto -c -k --keepParent Whisp.app Whisp.zip
 
   # Submit for notarization
   echo "📤 Submitting to Apple for notarization..."
-  xcrun notarytool submit VoiceFlow.zip \
-    --apple-id "$VOICEFLOW_APPLE_ID" \
-    --password "$VOICEFLOW_APPLE_PASSWORD" \
-    --team-id "$VOICEFLOW_TEAM_ID" \
+  xcrun notarytool submit Whisp.zip \
+    --apple-id "$WHISP_APPLE_ID" \
+    --password "$WHISP_APPLE_PASSWORD" \
+    --team-id "$WHISP_TEAM_ID" \
     --wait 2>&1 | tee notarization.log
 
   # Check if notarization was successful
   if grep -q "status: Accepted" notarization.log; then
     # Staple the notarization ticket to the app
     echo "📎 Stapling notarization ticket..."
-    xcrun stapler staple VoiceFlow.app
+    xcrun stapler staple Whisp.app
 
     if [ $? -eq 0 ]; then
       echo "✅ Notarization ticket stapled successfully!"
@@ -372,10 +362,10 @@ if [ "$NOTARIZE" = true ]; then
   fi
 
   # Clean up
-  rm -f VoiceFlow.zip
+  rm -f Whisp.zip
   rm -f notarization.log
 fi
 
 echo "✅ Build complete!"
 echo ""
-open -R VoiceFlow.app
+open -R Whisp.app
