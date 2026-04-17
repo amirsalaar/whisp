@@ -52,9 +52,22 @@ extension DashboardProvidersView {
                     if isDownloading {
                         ProgressView().controlSize(.small)
                     } else if isDownloaded {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(Color(nsColor: .systemGreen))
-                            .help("Downloaded")
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color(nsColor: .systemGreen))
+                                .help("Downloaded")
+
+                            Button {
+                                mlxRepoToDelete = repo
+                                showMLXDeleteConfirm = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Delete model")
+                        }
                     } else {
                         Button("Get") { downloadWhisperMLXModel(repo) }
                             .buttonStyle(.borderedProminent)
@@ -78,6 +91,13 @@ extension DashboardProvidersView {
                 Text(msg)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+
+            if isDownloaded {
+                ModelStorageInfoView(
+                    path: HuggingFaceCache.modelDirectory(for: repo).path,
+                    sizeText: mlxModelManager.modelSizes[repo].map { mlxModelManager.formatBytes($0) }
+                )
             }
 
             Label(
