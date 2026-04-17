@@ -68,6 +68,26 @@ internal final class MLXModelManager {
         }
     }
 
+    static func reportedStatusMessage(status: String?, message: String) -> String {
+        guard status == "error" else {
+            return message
+        }
+
+        return "Error: \(message)"
+    }
+
+    static func terminalStatusMessage(existingStatus: String?, exitStatus: Int32) -> String? {
+        guard exitStatus != 0 else {
+            return nil
+        }
+
+        if let existingStatus, existingStatus.hasPrefix("Error:") {
+            return existingStatus
+        }
+
+        return "Error: Download failed (exit code: \(exitStatus))"
+    }
+
     func refreshModelList() async {
         await MainActor.run {
             self.downloadedModels.removeAll()
@@ -219,11 +239,10 @@ internal final class MLXModelManager {
         process.arguments = ["-c", pythonScript]
 
         // Inherit environment and set HF_HOME to Application Support cache
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONUNBUFFERED"] = "1"
-        // Set HuggingFace cache to Application Support instead of home directory
-        env["HF_HOME"] = cacheDirectory.path
-        process.environment = env
+        process.environment = HuggingFaceEnvironment.downloadProcessEnvironment(
+            base: ProcessInfo.processInfo.environment,
+            cacheDirectory: cacheDirectory
+        )
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -248,8 +267,10 @@ internal final class MLXModelManager {
                             let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                             let message = json["message"] as? String
                         {
-                            self.downloadProgress[repo] = message
-                            self.logger.info("Download progress for \(repo): \(message)")
+                            let status = json["status"] as? String
+                            let reportedMessage = Self.reportedStatusMessage(status: status, message: message)
+                            self.downloadProgress[repo] = reportedMessage
+                            self.logger.info("Download progress for \(repo): \(reportedMessage)")
                         } else if lineStr.contains("Downloading") || lineStr.contains("%")
                             || lineStr.contains("model.safetensors")
                         {
@@ -325,7 +346,10 @@ internal final class MLXModelManager {
                 await MainActor.run { [weak self] in
                     self?.isDownloading[repo] = false
                     if exitStatus != 0 {
-                        self?.downloadProgress[repo] = "Error: Download failed (exit code: \(exitStatus))"
+                        self?.downloadProgress[repo] = Self.terminalStatusMessage(
+                            existingStatus: self?.downloadProgress[repo],
+                            exitStatus: exitStatus
+                        )
                     } else {
                         self?.downloadProgress.removeValue(forKey: repo)
                     }
@@ -417,11 +441,10 @@ internal final class MLXModelManager {
         process.arguments = ["-c", pythonScript]
 
         // Inherit environment and set HF_HOME to Application Support cache
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONUNBUFFERED"] = "1"
-        // Set HuggingFace cache to Application Support instead of home directory
-        env["HF_HOME"] = cacheDirectory.path
-        process.environment = env
+        process.environment = HuggingFaceEnvironment.downloadProcessEnvironment(
+            base: ProcessInfo.processInfo.environment,
+            cacheDirectory: cacheDirectory
+        )
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -438,7 +461,7 @@ internal final class MLXModelManager {
                 let status = json["status"]
             {
                 Task { @MainActor in
-                    self.downloadProgress[repo] = message
+                    self.downloadProgress[repo] = Self.reportedStatusMessage(status: status, message: message)
                     if status == "complete" {
                         self.downloadedModels.insert(repo)
                     }
@@ -466,7 +489,10 @@ internal final class MLXModelManager {
                 await MainActor.run { [weak self] in
                     self?.isDownloading[repo] = false
                     if exitStatus != 0 {
-                        self?.downloadProgress[repo] = "Error: Download failed (exit code: \(exitStatus))"
+                        self?.downloadProgress[repo] = Self.terminalStatusMessage(
+                            existingStatus: self?.downloadProgress[repo],
+                            exitStatus: exitStatus
+                        )
                     } else {
                         self?.downloadProgress.removeValue(forKey: repo)
                     }

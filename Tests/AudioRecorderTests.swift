@@ -171,6 +171,48 @@ final class AudioRecorderTests: XCTestCase {
         )
     }
 
+    func testStopRecordingWaitsForFinishCallbackBeforeReturning() async {
+        let delayedRecorder = DelayedFinishMockAVAudioRecorder()
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 7_000),
+                Date(timeIntervalSince1970: 7_001),
+                Date(timeIntervalSince1970: 7_002),
+                Date(timeIntervalSince1970: 7_005),
+            ],
+            recorderFactory: { _, _ in delayedRecorder }
+        )
+        recorder.hasPermission = true
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        let url = await recorder.stopRecording()
+
+        XCTAssertNotNil(url)
+        XCTAssertTrue(delayedRecorder.didDeliverFinishCallback)
+    }
+
+    func testStopRecordingReturnsNilWhenFinishCallbackReportsFailure() async {
+        let failedRecorder = FailedFinishMockAVAudioRecorder()
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 7_100),
+                Date(timeIntervalSince1970: 7_101),
+                Date(timeIntervalSince1970: 7_102),
+                Date(timeIntervalSince1970: 7_105),
+            ],
+            recorderFactory: { _, _ in failedRecorder }
+        )
+        recorder.hasPermission = true
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        let url = await recorder.stopRecording()
+
+        XCTAssertNil(url)
+        XCTAssertTrue(failedRecorder.didDeliverFailureCallback)
+    }
+
     func testStopRecordingWhenNotRecordingReturnsNil() async {
         let recorder = makeRecorder(
             dates: [],
@@ -206,6 +248,42 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertNil(recorder.lastRecordingDuration)
     }
 
+    func testCancelRecordingCleansUpAfterFinishCallback() async {
+        let debounceDate = Date(timeIntervalSince1970: 4_100)
+        let timestampDate = Date(timeIntervalSince1970: 4_101)
+        let sessionDate = Date(timeIntervalSince1970: 4_102)
+        let expectedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recording_\(timestampDate.timeIntervalSince1970).m4a")
+        let delayedRecorder = DelayedFinishMockAVAudioRecorder()
+
+        defer {
+            try? FileManager.default.removeItem(at: expectedURL)
+        }
+
+        let recorder = makeRecorder(
+            dates: [debounceDate, timestampDate, sessionDate],
+            recorderFactory: { url, _ in
+                XCTAssertEqual(url, expectedURL)
+                XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data([0x00])))
+                return delayedRecorder
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        recorder.cancelRecording()
+
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedURL.path))
+
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        XCTAssertTrue(delayedRecorder.didDeliverFinishCallback)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: expectedURL.path))
+    }
+
     func testStartRecordingReturnsFalseWhenRecorderFactoryThrows() async {
         enum TestError: Error { case failed }
 
@@ -220,6 +298,115 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertFalse(didStart)
         XCTAssertFalse(recorder.isRecording)
         XCTAssertNil(recorder.currentSessionStart)
+
+        let stoppedURL = await recorder.stopRecording()
+        XCTAssertNil(stoppedURL)
+    }
+
+    func testStartRecordingReturnsFalseWhenRecordCallFails() async {
+        let recorder = makeRecorder(
+            dates: [Date(), Date(), Date()],
+            recorderFactory: { _, _ in
+                let mock = MockAVAudioRecorder()
+                mock.setShouldFailToRecord(true)
+                return mock
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+
+        XCTAssertFalse(didStart)
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertNil(recorder.currentSessionStart)
+    }
+
+    func testConcurrentStopRecordingCallsShareTheSameStopWork() async {
+        let delayedRecorder = DelayedFinishMockAVAudioRecorder()
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 8_000),
+                Date(timeIntervalSince1970: 8_001),
+                Date(timeIntervalSince1970: 8_002),
+                Date(timeIntervalSince1970: 8_005),
+            ],
+            recorderFactory: { _, _ in delayedRecorder }
+        )
+        recorder.hasPermission = true
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        async let firstURL = recorder.stopRecording()
+        async let secondURL = recorder.stopRecording()
+        let resolvedFirstURL = await firstURL
+        let resolvedSecondURL = await secondURL
+
+        XCTAssertEqual(resolvedFirstURL, resolvedSecondURL)
+        XCTAssertTrue(delayedRecorder.didDeliverFinishCallback)
+    }
+
+    func testStopRecordingDoesNotDropSlowFinalization() async {
+        let delayedRecorder = DelayedFinishMockAVAudioRecorder()
+        delayedRecorder.delayNanoseconds = 50_000_000
+
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 9_000),
+                Date(timeIntervalSince1970: 9_001),
+                Date(timeIntervalSince1970: 9_002),
+                Date(timeIntervalSince1970: 9_005),
+            ],
+            recorderFactory: { _, _ in
+                delayedRecorder
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+        let stoppedURL = await recorder.stopRecording()
+        XCTAssertNotNil(stoppedURL)
+        XCTAssertTrue(delayedRecorder.didDeliverFinishCallback)
+    }
+
+    func testCancelDuringStopResolvesPendingStopTask() async {
+        let debounceDate = Date(timeIntervalSince1970: 9_200)
+        let timestampDate = Date(timeIntervalSince1970: 9_201)
+        let sessionDate = Date(timeIntervalSince1970: 9_202)
+        let stopDate = Date(timeIntervalSince1970: 9_205)
+        let expectedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recording_\(timestampDate.timeIntervalSince1970).m4a")
+        let delayedRecorder = DelayedFinishMockAVAudioRecorder()
+
+        defer {
+            try? FileManager.default.removeItem(at: expectedURL)
+        }
+
+        let recorder = makeRecorder(
+            dates: [debounceDate, timestampDate, sessionDate, stopDate],
+            recorderFactory: { url, _ in
+                XCTAssertEqual(url, expectedURL)
+                XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data([0x00])))
+                return delayedRecorder
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        async let stoppedURL = recorder.stopRecording()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        recorder.cancelRecording()
+
+        let resolvedStoppedURL = await stoppedURL
+
+        XCTAssertNil(resolvedStoppedURL)
+        XCTAssertTrue(delayedRecorder.didDeliverFinishCallback)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: expectedURL.path))
+
+        let subsequentStopURL = await recorder.stopRecording()
+        XCTAssertNil(subsequentStopURL)
     }
 
     // MARK: - Helpers
@@ -254,5 +441,31 @@ private final class StubDateProvider {
             return Date()
         }
         return dates.removeFirst()
+    }
+}
+
+private final class DelayedFinishMockAVAudioRecorder: MockAVAudioRecorder, @unchecked Sendable {
+    var delayNanoseconds: UInt64 = 400_000_000
+    private(set) var didDeliverFinishCallback = false
+
+    override func stop() {
+        setMockRecordingState(false)
+
+        Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            didDeliverFinishCallback = true
+            delegate?.audioRecorderDidFinishRecording?(self, successfully: true)
+        }
+    }
+}
+
+private final class FailedFinishMockAVAudioRecorder: MockAVAudioRecorder, @unchecked Sendable {
+    private(set) var didDeliverFailureCallback = false
+
+    override func stop() {
+        setMockRecordingState(false)
+        didDeliverFailureCallback = true
+        delegate?.audioRecorderDidFinishRecording?(self, successfully: false)
     }
 }

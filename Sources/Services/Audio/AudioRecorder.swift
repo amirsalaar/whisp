@@ -5,6 +5,11 @@ import os.log
 
 @MainActor
 internal class AudioRecorder: NSObject, ObservableObject {
+    private enum StopRecordingResult {
+        case finishedSuccessfully
+        case finishedWithFailure
+    }
+
     @Published var isRecording = false
     @Published var audioLevel: Float = 0.0
     @Published var hasPermission = false
@@ -17,6 +22,10 @@ internal class AudioRecorder: NSObject, ObservableObject {
     private let dateProvider: () -> Date
     private let authorizationStatusProvider: () -> AVAuthorizationStatus
     private let permissionRequester: (@escaping @Sendable (Bool) -> Void) -> Void
+    private var stopRecordingContinuation: CheckedContinuation<StopRecordingResult, Never>?
+    private var stopRecordingTask: Task<URL?, Never>?
+    private var stoppingRecorderIdentifier: ObjectIdentifier?
+    private var cancelledRecorderIdentifier: ObjectIdentifier?
     private(set) var currentSessionStart: Date?
     private(set) var lastRecordingDuration: TimeInterval?
 
@@ -138,7 +147,20 @@ internal class AudioRecorder: NSObject, ObservableObject {
             audioRecorder = try recorderFactory(audioFilename, settings)
             audioRecorder?.delegate = self
             audioRecorder?.isMeteringEnabled = true
-            audioRecorder?.record()
+
+            guard audioRecorder?.record() == true else {
+                Logger.audioRecorder.error("AVAudioRecorder failed to start recording")
+                audioRecorder = nil
+                recordingURL = nil
+
+                if UserDefaults.standard.autoBoostMicrophoneVolume {
+                    _ = await volumeManager.restoreMicrophoneVolume()
+                }
+
+                checkMicrophonePermission()
+                return false
+            }
+
             currentSessionStart = dateProvider()
             lastRecordingDuration = nil
 
@@ -147,11 +169,11 @@ internal class AudioRecorder: NSObject, ObservableObject {
             return true
         } catch {
             Logger.audioRecorder.error("Failed to start recording: \(error.localizedDescription)")
+            audioRecorder = nil
+            recordingURL = nil
             // Restore volume if recording failed and we boosted it
             if UserDefaults.standard.autoBoostMicrophoneVolume {
-                Task {
-                    await volumeManager.restoreMicrophoneVolume()
-                }
+                _ = await volumeManager.restoreMicrophoneVolume()
             }
             // Recheck permissions if recording failed
             checkMicrophonePermission()
@@ -182,30 +204,80 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
 
     func stopRecording() async -> URL? {
-        let now = dateProvider()
-        let sessionDuration = currentSessionStart.map { now.timeIntervalSince($0) }
-        lastRecordingDuration = sessionDuration
-        currentSessionStart = nil
-
-        audioRecorder?.stop()
-
-        // Wait for AVAudioRecorder to flush audio data to disk
-        // AVAudioRecorder's stop() is asynchronous and may not have completed file writing
-        // Typical flush time is 50-200ms depending on buffer size
-        try? await Task.sleep(for: .milliseconds(200))
-
-        audioRecorder = nil
-
-        // Restore microphone volume if it was boosted
-        if UserDefaults.standard.autoBoostMicrophoneVolume {
-            _ = await volumeManager.restoreMicrophoneVolume()
+        if let stopRecordingTask {
+            return await stopRecordingTask.value
         }
 
-        // Update @Published properties on main thread
-        self.isRecording = false
-        self.stopLevelMonitoring()
+        guard let recorder = audioRecorder else {
+            return recordingURL
+        }
 
-        return recordingURL
+        let stopTask = Task { @MainActor [weak self] () -> URL? in
+            guard let self else { return nil }
+
+            defer {
+                stopRecordingTask = nil
+            }
+
+            let now = dateProvider()
+            let sessionDuration = currentSessionStart.map { now.timeIntervalSince($0) }
+            lastRecordingDuration = sessionDuration
+            currentSessionStart = nil
+            let finalRecordingURL = recordingURL
+
+            let stopResult = await waitForRecordingToFinish(recorder)
+            if stopResult == .finishedWithFailure {
+                Logger.audioRecorder.error("Recording failed during finalization")
+            }
+
+            audioRecorder = nil
+
+            if UserDefaults.standard.autoBoostMicrophoneVolume {
+                _ = await volumeManager.restoreMicrophoneVolume()
+            }
+
+            isRecording = false
+            stopLevelMonitoring()
+
+            if stopResult == .finishedWithFailure {
+                if let finalRecordingURL {
+                    try? FileManager.default.removeItem(at: finalRecordingURL)
+                }
+                recordingURL = nil
+                return nil
+            }
+
+            return finalRecordingURL
+        }
+
+        stopRecordingTask = stopTask
+        return await stopTask.value
+    }
+
+    private func waitForRecordingToFinish(_ recorder: AVAudioRecorder) async -> StopRecordingResult {
+        if !recorder.isRecording {
+            return .finishedSuccessfully
+        }
+
+        let recorderIdentifier = ObjectIdentifier(recorder)
+
+        return await withCheckedContinuation { continuation in
+            stoppingRecorderIdentifier = recorderIdentifier
+            stopRecordingContinuation = continuation
+            recorder.stop()
+        }
+    }
+
+    private func resolveStopRecordingContinuation(
+        result: StopRecordingResult,
+        expectedRecorderIdentifier: ObjectIdentifier
+    ) {
+        guard stoppingRecorderIdentifier == expectedRecorderIdentifier else { return }
+        guard let continuation = stopRecordingContinuation else { return }
+
+        stoppingRecorderIdentifier = nil
+        stopRecordingContinuation = nil
+        continuation.resume(returning: result)
     }
 
     func cleanupRecording() {
@@ -231,8 +303,12 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
 
     func cancelRecording() {
-        // Stop recording and cleanup without returning URL
-        audioRecorder?.stop()
+        let recorderToCancel = audioRecorder
+        if let recorderToCancel {
+            cancelledRecorderIdentifier = ObjectIdentifier(recorderToCancel)
+            recorderToCancel.stop()
+        }
+
         audioRecorder = nil
         currentSessionStart = nil
         lastRecordingDuration = nil
@@ -248,8 +324,9 @@ internal class AudioRecorder: NSObject, ObservableObject {
         self.isRecording = false
         self.stopLevelMonitoring()
 
-        // Clean up the recording file
-        cleanupRecording()
+        if recorderToCancel == nil {
+            cleanupRecording()
+        }
     }
 
     private func startLevelMonitoring() {
@@ -286,6 +363,25 @@ extension AudioRecorder: AVAudioRecorderDelegate {
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if !flag {
             Logger.audioRecorder.error("Recording finished unsuccessfully")
+        }
+
+        Task { @MainActor [weak self] in
+            let recorderIdentifier = ObjectIdentifier(recorder)
+
+            if self?.cancelledRecorderIdentifier == recorderIdentifier {
+                self?.cancelledRecorderIdentifier = nil
+                self?.cleanupRecording()
+                self?.resolveStopRecordingContinuation(
+                    result: .finishedWithFailure,
+                    expectedRecorderIdentifier: recorderIdentifier
+                )
+                return
+            }
+
+            self?.resolveStopRecordingContinuation(
+                result: flag ? .finishedSuccessfully : .finishedWithFailure,
+                expectedRecorderIdentifier: recorderIdentifier
+            )
         }
     }
 }
