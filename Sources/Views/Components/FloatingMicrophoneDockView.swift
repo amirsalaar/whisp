@@ -283,7 +283,6 @@ internal struct FloatingMicrophoneDockView: View {
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.isPrimaryActionEnabled)
-            .help(primaryButtonHelp)
 
             dotsPill
         }
