@@ -71,6 +71,58 @@ final class FnGlobeMonitorTests: XCTestCase {
         XCTAssertEqual(readinessChanges.last, .ready)
     }
 
+    func testDefaultFunctionKeyActivationAllowsCombinationWindow() {
+        let keyDownExpectation = expectation(description: "keyDown")
+        keyDownExpectation.isInverted = true
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
+
+        wait(for: [keyDownExpectation], timeout: 0.05)
+    }
+
+    func testDefaultFunctionKeyToggleStartsImmediately() {
+        let keyDownExpectation = expectation(description: "keyDown")
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            mode: .toggle,
+            readinessHandler: { _, _ in }
+        )
+
+        monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
+
+        wait(for: [keyDownExpectation], timeout: 1.0)
+    }
+
+    func testCapsLockDoesNotCancelFunctionKeyActivation() {
+        let keyDownExpectation = expectation(description: "keyDown")
+
+        let monitor = FnGlobeMonitor(
+            keyDownHandler: {
+                keyDownExpectation.fulfill()
+            },
+            readinessHandler: { _, _ in },
+            holdDelay: 0.1
+        )
+
+        monitor.handleFlagsChanged(
+            keyCode: Int64(PressAndHoldKey.globe.keyCode),
+            flags: [.maskSecondaryFn, .maskAlphaShift]
+        )
+        monitor.activateFnIfEligible()
+
+        wait(for: [keyDownExpectation], timeout: 1.0)
+    }
+
     func testStandaloneFunctionKeyKeyDownDoesNotCancelPendingActivation() {
         let keyDownExpectation = expectation(description: "keyDown")
 
@@ -96,7 +148,8 @@ final class FnGlobeMonitorTests: XCTestCase {
             keyDownHandler: {
                 keyDownExpectation.fulfill()
             },
-            readinessHandler: { _, _ in }
+            readinessHandler: { _, _ in },
+            holdDelay: 0.1
         )
 
         monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
@@ -114,7 +167,8 @@ final class FnGlobeMonitorTests: XCTestCase {
             keyDownHandler: {
                 keyDownExpectation.fulfill()
             },
-            readinessHandler: { _, _ in }
+            readinessHandler: { _, _ in },
+            holdDelay: 0.1
         )
 
         monitor.processSemanticEvent(.functionKeyChanged(isPressed: true))
@@ -132,7 +186,8 @@ final class FnGlobeMonitorTests: XCTestCase {
             keyDownHandler: {
                 keyDownExpectation.fulfill()
             },
-            readinessHandler: { _, _ in }
+            readinessHandler: { _, _ in },
+            holdDelay: 0.1
         )
 
         monitor.handleFlagsChanged(keyCode: Int64(PressAndHoldKey.globe.keyCode), flags: [.maskSecondaryFn])
@@ -150,7 +205,8 @@ final class FnGlobeMonitorTests: XCTestCase {
             keyDownHandler: {
                 keyDownExpectation.fulfill()
             },
-            readinessHandler: { _, _ in }
+            readinessHandler: { _, _ in },
+            holdDelay: 0.1
         )
 
         monitor.handleFlagsChanged(

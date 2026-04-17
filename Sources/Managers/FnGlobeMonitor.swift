@@ -252,16 +252,17 @@ internal final class FnGlobeMonitor {
     init(
         keyDownHandler: @escaping () -> Void,
         keyUpHandler: (() -> Void)? = nil,
+        mode: PressAndHoldMode = .hold,
         readinessHandler: @escaping ReadinessHandler,
         inputMonitoringPermissionManager: InputMonitoringPermissionManager =
             InputMonitoringPermissionManager(),
-        holdDelay: TimeInterval = 0.12
+        holdDelay: TimeInterval? = nil
     ) {
         self.keyDownHandler = keyDownHandler
         self.keyUpHandler = keyUpHandler
         self.readinessHandler = readinessHandler
         self.inputMonitoringPermissionManager = inputMonitoringPermissionManager
-        self.holdDelay = holdDelay
+        self.holdDelay = holdDelay ?? (mode == .toggle ? 0 : 0.12)
     }
 
     @discardableResult
@@ -388,6 +389,11 @@ internal final class FnGlobeMonitor {
     private func scheduleActivation() {
         cancelPendingActivation()
 
+        guard holdDelay > 0 else {
+            activateFnIfEligible()
+            return
+        }
+
         let workItem = DispatchWorkItem { [weak self] in
             self?.activateFnIfEligible()
         }
@@ -463,7 +469,6 @@ internal final class FnGlobeMonitor {
             .maskControl,
             .maskAlternate,
             .maskCommand,
-            .maskAlphaShift,
         ]
 
         return !flags.intersection(combinationMask).isEmpty

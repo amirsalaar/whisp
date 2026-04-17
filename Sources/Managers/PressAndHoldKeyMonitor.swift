@@ -299,6 +299,19 @@ internal final class PressAndHoldKeyMonitor {
     private let inputMonitoringPermissionManager: InputMonitoringPermissionManager
     private let holdDelay: TimeInterval
 
+    private static func defaultHoldDelay(for configuration: PressAndHoldConfiguration) -> TimeInterval {
+        if configuration.mode == .toggle {
+            return 0
+        }
+
+        switch configuration.key {
+        case .rightCommand, .rightOption, .rightControl:
+            return 0
+        case .leftCommand, .leftOption, .leftControl, .globe:
+            return 0.12
+        }
+    }
+
     private static let eventMask =
         CGEventMask(1 << CGEventType.flagsChanged.rawValue)
         | CGEventMask(1 << CGEventType.keyDown.rawValue)
@@ -324,14 +337,14 @@ internal final class PressAndHoldKeyMonitor {
         readinessHandler: @escaping ReadinessHandler = { _, _ in },
         inputMonitoringPermissionManager: InputMonitoringPermissionManager =
             InputMonitoringPermissionManager(),
-        holdDelay: TimeInterval = 0.12
+        holdDelay: TimeInterval? = nil
     ) {
         self.configuration = configuration
         self.keyDownHandler = keyDownHandler
         self.keyUpHandler = keyUpHandler
         self.readinessHandler = readinessHandler
         self.inputMonitoringPermissionManager = inputMonitoringPermissionManager
-        self.holdDelay = holdDelay
+        self.holdDelay = holdDelay ?? Self.defaultHoldDelay(for: configuration)
     }
 
     @discardableResult
@@ -478,6 +491,11 @@ internal final class PressAndHoldKeyMonitor {
 
     private func scheduleActivation() {
         cancelPendingActivation()
+
+        guard holdDelay > 0 else {
+            activateKeyIfEligible()
+            return
+        }
 
         let workItem = DispatchWorkItem { [weak self] in
             self?.activateKeyIfEligible()
