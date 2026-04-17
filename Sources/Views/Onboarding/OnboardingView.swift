@@ -1,7 +1,6 @@
 import AVFoundation
 import ApplicationServices
 import SwiftUI
-import os.log
 
 // MARK: - Onboarding Step
 
@@ -67,6 +66,9 @@ internal struct OnboardingView: View {
     @State private var testError: String?
     @State private var recordingSeconds: Int = 0
     @State private var recordingTimer: Timer?
+
+    // Model download error
+    @State private var downloadError: String?
 
     private let keychainService: KeychainServiceProtocol = KeychainService.shared
 
@@ -234,6 +236,9 @@ internal struct OnboardingView: View {
                 primaryAction: { advance(to: .engine) },
                 primaryDisabled: micStatus != .authorized
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         }
     }
 
@@ -465,7 +470,9 @@ internal struct OnboardingView: View {
                 }
 
                 Button(apiKeySaved ? "Saved" : "Save Key") {
-                    keychainService.saveQuietly(apiKey, service: "Whisp", account: account)
+                    let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    apiKey = trimmedKey
+                    keychainService.saveQuietly(trimmedKey, service: "Whisp", account: account)
                     withAnimation { apiKeySaved = true }
                 }
                 .buttonStyle(.borderedProminent)
@@ -525,6 +532,17 @@ internal struct OnboardingView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+
+                    if let downloadError {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                            Text(downloadError)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
 
@@ -812,10 +830,17 @@ internal struct OnboardingView: View {
 
             navigationButtons(
                 secondary: "Skip",
-                secondaryAction: { advance(to: .done) },
+                secondaryAction: {
+                    cleanupRecording()
+                    advance(to: .done)
+                },
                 primary: testResult != nil ? "Finish" : "Skip for Now",
-                primaryAction: { advance(to: .done) }
+                primaryAction: {
+                    cleanupRecording()
+                    advance(to: .done)
+                }
             )
+            .disabled(isRecording || isTranscribing)
         }
     }
 
@@ -876,7 +901,7 @@ internal struct OnboardingView: View {
 
             Spacer()
 
-            Button("Open Settings") {
+            Button("Done") {
                 completeOnboarding()
             }
             .buttonStyle(.borderedProminent)
@@ -990,7 +1015,7 @@ internal struct OnboardingView: View {
     private var isEngineSetupComplete: Bool {
         switch transcriptionProvider {
         case .openai, .gemini:
-            return apiKeySaved || !apiKey.isEmpty
+            return apiKeySaved
         case .local:
             return modelReady
         case .parakeet, .gemma, .whisperMLX:
@@ -1012,6 +1037,7 @@ internal struct OnboardingView: View {
 
     private func downloadModel() {
         isDownloadingModel = true
+        downloadError = nil
 
         Task {
             do {
@@ -1023,6 +1049,7 @@ internal struct OnboardingView: View {
             } catch {
                 await MainActor.run {
                     isDownloadingModel = false
+                    downloadError = "Download failed: \(error.localizedDescription)"
                 }
             }
         }
@@ -1038,7 +1065,7 @@ internal struct OnboardingView: View {
         testResult = nil
         testError = nil
 
-        Task {
+        Task { @MainActor in
             let success = await recorder.startRecording()
             if success {
                 isRecording = true
@@ -1062,7 +1089,7 @@ internal struct OnboardingView: View {
         isRecording = false
         isTranscribing = true
 
-        Task {
+        Task { @MainActor in
             do {
                 guard let audioURL = await recorder.stopRecording() else {
                     isTranscribing = false
@@ -1084,6 +1111,18 @@ internal struct OnboardingView: View {
                 isTranscribing = false
                 testRecorder = nil
                 testError = "Transcription failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func cleanupRecording() {
+        if isRecording, let recorder = testRecorder {
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+            isRecording = false
+            Task { @MainActor in
+                _ = await recorder.stopRecording()
+                testRecorder = nil
             }
         }
     }

@@ -55,8 +55,10 @@ extension AppDelegate {
 
         configureShortcutMonitors()
 
-        // Auto-open dashboard on first launch so onboarding sheet is presented
-        if !UserDefaults.standard.bool(forKey: AppDefaults.Keys.hasCompletedWelcome) {
+        // Auto-open dashboard on first launch or welcome version bump so onboarding sheet is presented
+        let hasCompletedWelcome = UserDefaults.standard.bool(forKey: AppDefaults.Keys.hasCompletedWelcome)
+        let lastWelcomeVersion = UserDefaults.standard.string(forKey: AppDefaults.Keys.lastWelcomeVersion) ?? "0"
+        if !hasCompletedWelcome || lastWelcomeVersion != AppDefaults.currentWelcomeVersion {
             DashboardWindowManager.shared.showDashboardWindow()
         }
 

@@ -111,6 +111,7 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
 internal struct DashboardView: View {
     @ObservedObject var selectionModel: DashboardSelectionModel
     @AppStorage(AppDefaults.Keys.hasCompletedWelcome) private var hasCompletedWelcome = false
+    @AppStorage(AppDefaults.Keys.lastWelcomeVersion) private var lastWelcomeVersion = "0"
     @State private var showOnboarding = false
 
     init(selectionModel: DashboardSelectionModel = DashboardSelectionModel()) {
@@ -177,7 +178,7 @@ internal struct DashboardView: View {
                 .interactiveDismissDisabled()
         }
         .onAppear {
-            if !hasCompletedWelcome {
+            if !hasCompletedWelcome || lastWelcomeVersion != AppDefaults.currentWelcomeVersion {
                 showOnboarding = true
             }
         }
