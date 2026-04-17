@@ -140,6 +140,18 @@ jobs:
           [ -d Sources/ml ] && cp -R Sources/ml "$APP_BUNDLE/Contents/Resources/" && find "$APP_BUNDLE/Contents/Resources/ml" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           [ -f Sources/Resources/pyproject.toml ] && cp Sources/Resources/pyproject.toml "$APP_BUNDLE/Contents/Resources/"
 
+          if [ -f WhispIcon.png ]; then
+            bash scripts/generate-icons.sh
+            if command -v iconutil >/dev/null 2>&1 && [ -d Whisp.iconset ]; then
+              iconutil -c icns Whisp.iconset -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+            else
+              echo "⚠️ Could not generate AppIcon.icns"
+            fi
+            rm -rf Whisp.iconset
+          else
+            echo "⚠️ WhispIcon.png not found, release app will use default icon"
+          fi
+
           # Reuse repo Info.plist and patch build variables + version fields
           cp Info.plist "$APP_BUNDLE/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDevelopmentRegion en" "$APP_BUNDLE/Contents/Info.plist"

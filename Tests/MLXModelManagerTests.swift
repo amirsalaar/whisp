@@ -70,4 +70,28 @@ final class MLXModelManagerTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: AppDefaults.Keys.selectedParakeetModel)
         }
     }
+
+    func testFormattedDownloadFailurePrefersDetailedMessage() {
+        let message = MLXModelManager.formattedDownloadFailure(
+            detailedMessage: "RepositoryNotFoundError: model missing",
+            exitStatus: 1
+        )
+
+        XCTAssertEqual(message, "Error: RepositoryNotFoundError: model missing")
+    }
+
+    func testFormattedDownloadFailurePreservesExistingErrorPrefix() {
+        let message = MLXModelManager.formattedDownloadFailure(
+            detailedMessage: "Error: SSL certificate verify failed",
+            exitStatus: 1
+        )
+
+        XCTAssertEqual(message, "Error: SSL certificate verify failed")
+    }
+
+    func testFormattedDownloadFailureFallsBackToExitCode() {
+        let message = MLXModelManager.formattedDownloadFailure(detailedMessage: nil, exitStatus: 1)
+
+        XCTAssertEqual(message, "Error: Download failed (exit code: 1)")
+    }
 }
