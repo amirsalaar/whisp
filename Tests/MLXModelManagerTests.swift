@@ -5,13 +5,7 @@ import XCTest
 @MainActor
 final class MLXModelManagerTests: XCTestCase {
     override func tearDown() {
-        let environmentKeys: [String] = [
-            "HF_HUB_OFFLINE",
-            "TRANSFORMERS_OFFLINE",
-            "HF_HUB_DISABLE_IMPLICIT_TOKEN",
-        ]
-
-        for key in environmentKeys {
+        for key in ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_IMPLICIT_TOKEN"] {
             unsetenv(key)
         }
         super.tearDown()
@@ -84,30 +78,6 @@ final class MLXModelManagerTests: XCTestCase {
         }
     }
 
-    func testFormattedDownloadFailurePrefersDetailedMessage() {
-        let message = MLXModelManager.formattedDownloadFailure(
-            detailedMessage: "RepositoryNotFoundError: model missing",
-            exitStatus: 1
-        )
-
-        XCTAssertEqual(message, "Error: RepositoryNotFoundError: model missing")
-    }
-
-    func testFormattedDownloadFailurePreservesExistingErrorPrefix() {
-        let message = MLXModelManager.formattedDownloadFailure(
-            detailedMessage: "Error: SSL certificate verify failed",
-            exitStatus: 1
-        )
-
-        XCTAssertEqual(message, "Error: SSL certificate verify failed")
-    }
-
-    func testFormattedDownloadFailureFallsBackToExitCode() {
-        let message = MLXModelManager.formattedDownloadFailure(detailedMessage: nil, exitStatus: 1)
-
-        XCTAssertEqual(message, "Error: Download failed (exit code: 1)")
-    }
-
     func testDownloadProcessEnvironmentClearsOfflineFlags() {
         let cacheRoot = URL(fileURLWithPath: "/tmp/whisp-hf-cache", isDirectory: true)
         let environment = HuggingFaceEnvironment.downloadProcessEnvironment(
@@ -140,5 +110,21 @@ final class MLXModelManagerTests: XCTestCase {
         XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "HF_HUB_OFFLINE"), "0")
         XCTAssertNil(HuggingFaceEnvironment.currentValue(for: "TRANSFORMERS_OFFLINE"))
         XCTAssertNil(HuggingFaceEnvironment.currentValue(for: "HF_HUB_DISABLE_IMPLICIT_TOKEN"))
+    }
+
+    func testTerminalStatusMessagePreservesDetailedErrors() {
+        XCTAssertEqual(
+            MLXModelManager.terminalStatusMessage(
+                existingStatus: "Error: LocalEntryNotFoundError: snapshot missing",
+                exitStatus: 1
+            ),
+            "Error: LocalEntryNotFoundError: snapshot missing"
+        )
+        XCTAssertEqual(
+            MLXModelManager.terminalStatusMessage(
+                existingStatus: "Downloading model files...", exitStatus: 2),
+            "Error: Download failed (exit code: 2)"
+        )
+        XCTAssertNil(MLXModelManager.terminalStatusMessage(existingStatus: nil, exitStatus: 0))
     }
 }

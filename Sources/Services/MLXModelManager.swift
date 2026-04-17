@@ -23,7 +23,6 @@ internal final class MLXModelManager {
     var isDownloading: [String: Bool] = [:]
     var downloadProgress: [String: String] = [:]
     var totalCacheSize: Int64 = 0
-    private var detailedDownloadErrors: [String: String] = [:]
 
     private let logger = Logger(subsystem: "com.whisp.app", category: "MLXModelManager")
     private let cacheDirectory: URL
@@ -67,6 +66,26 @@ internal final class MLXModelManager {
                 await refreshModelList()
             }
         }
+    }
+
+    static func reportedStatusMessage(status: String?, message: String) -> String {
+        guard status == "error" else {
+            return message
+        }
+
+        return "Error: \(message)"
+    }
+
+    static func terminalStatusMessage(existingStatus: String?, exitStatus: Int32) -> String? {
+        guard exitStatus != 0 else {
+            return nil
+        }
+
+        if let existingStatus, existingStatus.hasPrefix("Error:") {
+            return existingStatus
+        }
+
+        return "Error: Download failed (exit code: \(exitStatus))"
     }
 
     func refreshModelList() async {
@@ -175,10 +194,7 @@ internal final class MLXModelManager {
         } catch {
             logger.error("Failed to prepare Python environment: \(error.localizedDescription)")
             await MainActor.run {
-                downloadProgress[repo] = Self.formattedDownloadFailure(
-                    detailedMessage: "Could not prepare Python environment: \(error.localizedDescription)",
-                    exitStatus: 1
-                )
+                downloadProgress[repo] = "Error: Could not prepare Python environment"
                 isDownloading[repo] = false
             }
             return
@@ -187,7 +203,6 @@ internal final class MLXModelManager {
 
         await MainActor.run {
             isDownloading[repo] = true
-            detailedDownloadErrors.removeValue(forKey: repo)
             downloadProgress[repo] = "Checking Python environment..."
         }
 
@@ -203,8 +218,6 @@ internal final class MLXModelManager {
             # Show progress
             os.environ.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '0')
             os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
-            os.environ.pop('HF_HUB_OFFLINE', None)
-            os.environ.pop('TRANSFORMERS_OFFLINE', None)
 
             repo = "\(repo)"
 
@@ -213,15 +226,14 @@ internal final class MLXModelManager {
                 from huggingface_hub import snapshot_download
 
                 # Download files only - don't load into memory
-                path = snapshot_download(repo, cache_dir=os.environ.get('HF_HUB_CACHE'))
+                path = snapshot_download(repo)
                 print(json.dumps({"status": "complete", "message": "Download complete"}), flush=True)
 
             except ImportError as e:
-                print(json.dumps({"status": "error", "message": f"ImportError: huggingface_hub not installed: {e}"}), flush=True)
+                print(json.dumps({"status": "error", "message": f"huggingface_hub not installed: {e}"}), flush=True)
                 sys.exit(1)
             except Exception as e:
-                message = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
-                print(json.dumps({"status": "error", "message": message}), flush=True)
+                print(json.dumps({"status": "error", "message": str(e)}), flush=True)
                 sys.exit(1)
             """
         process.arguments = ["-c", pythonScript]
@@ -253,15 +265,12 @@ internal final class MLXModelManager {
                         // Try to parse as JSON
                         if let jsonData = lineStr.data(using: .utf8),
                             let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                            let message = json["message"] as? String,
-                            let status = json["status"] as? String
+                            let message = json["message"] as? String
                         {
-                            if status == "error" {
-                                self.recordDetailedDownloadError(message, for: repo)
-                            } else {
-                                self.downloadProgress[repo] = message
-                            }
-                            self.logger.info("Download progress for \(repo): \(message)")
+                            let status = json["status"] as? String
+                            let reportedMessage = Self.reportedStatusMessage(status: status, message: message)
+                            self.downloadProgress[repo] = reportedMessage
+                            self.logger.info("Download progress for \(repo): \(reportedMessage)")
                         } else if lineStr.contains("Downloading") || lineStr.contains("%")
                             || lineStr.contains("model.safetensors")
                         {
@@ -312,8 +321,9 @@ internal final class MLXModelManager {
                 if isRealError && !isProgress {
                     self.logger.error("Python stderr: \(error)")
                     Task { @MainActor in
+                        // Show the actual error in the UI
                         let errorLines = error.split(separator: "\n").prefix(2).joined(separator: " ")
-                        self.recordDetailedDownloadError(errorLines, for: repo)
+                        self.downloadProgress[repo] = "Error: \(errorLines)"
                     }
                 } else if isProgress {
                     // It's just progress info, not an error
@@ -336,13 +346,11 @@ internal final class MLXModelManager {
                 await MainActor.run { [weak self] in
                     self?.isDownloading[repo] = false
                     if exitStatus != 0 {
-                        let detailedMessage = self?.detailedDownloadErrors.removeValue(forKey: repo)
-                        self?.downloadProgress[repo] = Self.formattedDownloadFailure(
-                            detailedMessage: detailedMessage,
+                        self?.downloadProgress[repo] = Self.terminalStatusMessage(
+                            existingStatus: self?.downloadProgress[repo],
                             exitStatus: exitStatus
                         )
                     } else {
-                        self?.detailedDownloadErrors.removeValue(forKey: repo)
                         self?.downloadProgress.removeValue(forKey: repo)
                     }
 
@@ -360,11 +368,7 @@ internal final class MLXModelManager {
             logger.error("Failed to launch Python process: \(error)")
             await MainActor.run {
                 isDownloading[repo] = false
-                detailedDownloadErrors.removeValue(forKey: repo)
-                downloadProgress[repo] = Self.formattedDownloadFailure(
-                    detailedMessage: error.localizedDescription,
-                    exitStatus: 1
-                )
+                downloadProgress[repo] = "Error: \(error.localizedDescription)"
             }
         }
     }
@@ -405,10 +409,7 @@ internal final class MLXModelManager {
         } catch {
             logger.error("Failed to prepare Python environment: \(error.localizedDescription)")
             await MainActor.run {
-                downloadProgress[repo] = Self.formattedDownloadFailure(
-                    detailedMessage: "Could not prepare Python environment: \(error.localizedDescription)",
-                    exitStatus: 1
-                )
+                downloadProgress[repo] = "Error: Could not prepare Python environment"
                 isDownloading[repo] = false
             }
             return
@@ -416,7 +417,6 @@ internal final class MLXModelManager {
 
         await MainActor.run {
             isDownloading[repo] = true
-            detailedDownloadErrors.removeValue(forKey: repo)
             downloadProgress[repo] = "Downloading Parakeet model..."
         }
 
@@ -428,8 +428,6 @@ internal final class MLXModelManager {
             # Allow downloads; avoid implicit token usage
             os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
             os.environ.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '0')
-            os.environ.pop('HF_HUB_OFFLINE', None)
-            os.environ.pop('TRANSFORMERS_OFFLINE', None)
 
             try:
                 from parakeet_mlx import from_pretrained
@@ -437,8 +435,7 @@ internal final class MLXModelManager {
                 from_pretrained(\"\(repo)\")
                 print(json.dumps({"status": "complete", "message": "Model ready"}), flush=True)
             except Exception as e:
-                message = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
-                print(json.dumps({"status": "error", "message": message}), flush=True)
+                print(json.dumps({"status": "error", "message": str(e)}), flush=True)
                 sys.exit(1)
             """
         process.arguments = ["-c", pythonScript]
@@ -464,11 +461,7 @@ internal final class MLXModelManager {
                 let status = json["status"]
             {
                 Task { @MainActor in
-                    if status == "error" {
-                        self.recordDetailedDownloadError(message, for: repo)
-                    } else {
-                        self.downloadProgress[repo] = message
-                    }
+                    self.downloadProgress[repo] = Self.reportedStatusMessage(status: status, message: message)
                     if status == "complete" {
                         self.downloadedModels.insert(repo)
                     }
@@ -481,10 +474,6 @@ internal final class MLXModelManager {
             guard !data.isEmpty else { return }
             if let err = String(data: data, encoding: .utf8) {
                 self.logger.error("Parakeet download stderr: \(err)")
-                Task { @MainActor in
-                    let errorLines = err.split(separator: "\n").prefix(2).joined(separator: " ")
-                    self.recordDetailedDownloadError(errorLines, for: repo)
-                }
             }
         }
 
@@ -500,13 +489,11 @@ internal final class MLXModelManager {
                 await MainActor.run { [weak self] in
                     self?.isDownloading[repo] = false
                     if exitStatus != 0 {
-                        let detailedMessage = self?.detailedDownloadErrors.removeValue(forKey: repo)
-                        self?.downloadProgress[repo] = Self.formattedDownloadFailure(
-                            detailedMessage: detailedMessage,
+                        self?.downloadProgress[repo] = Self.terminalStatusMessage(
+                            existingStatus: self?.downloadProgress[repo],
                             exitStatus: exitStatus
                         )
                     } else {
-                        self?.detailedDownloadErrors.removeValue(forKey: repo)
                         self?.downloadProgress.removeValue(forKey: repo)
                     }
 
@@ -525,34 +512,9 @@ internal final class MLXModelManager {
             logger.error("Failed to launch Python process for Parakeet: \(error)")
             await MainActor.run {
                 self.isDownloading[repo] = false
-                self.detailedDownloadErrors.removeValue(forKey: repo)
-                self.downloadProgress[repo] = Self.formattedDownloadFailure(
-                    detailedMessage: error.localizedDescription,
-                    exitStatus: 1
-                )
+                self.downloadProgress[repo] = "Error: \(error.localizedDescription)"
             }
         }
-    }
-
-    static func formattedDownloadFailure(detailedMessage: String?, exitStatus: Int32) -> String {
-        let trimmed = detailedMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let trimmed, !trimmed.isEmpty else {
-            return "Error: Download failed (exit code: \(exitStatus))"
-        }
-
-        if trimmed.lowercased().hasPrefix("error:") {
-            return trimmed
-        }
-
-        return "Error: \(trimmed)"
-    }
-
-    private func recordDetailedDownloadError(_ message: String, for repo: String) {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        detailedDownloadErrors[repo] = trimmed
-        downloadProgress[repo] = Self.formattedDownloadFailure(detailedMessage: trimmed, exitStatus: 1)
     }
 
     func deleteModel(_ repo: String) async {
