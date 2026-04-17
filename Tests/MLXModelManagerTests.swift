@@ -4,10 +4,33 @@ import XCTest
 
 @MainActor
 final class MLXModelManagerTests: XCTestCase {
-    override func tearDown() {
-        for key in ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_IMPLICIT_TOKEN"] {
-            unsetenv(key)
+    private let environmentKeys = [
+        "HF_HUB_OFFLINE",
+        "TRANSFORMERS_OFFLINE",
+        "HF_HUB_DISABLE_IMPLICIT_TOKEN",
+    ]
+    private var originalEnvironmentValues: [String: String?] = [:]
+
+    override func setUp() {
+        super.setUp()
+
+        originalEnvironmentValues = [:]
+        for key in environmentKeys {
+            originalEnvironmentValues[key] = HuggingFaceEnvironment.currentValue(for: key)
         }
+    }
+
+    override func tearDown() {
+        for key in environmentKeys {
+            let originalValue = originalEnvironmentValues[key] ?? nil
+            if let originalValue {
+                setenv(key, originalValue, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+
+        originalEnvironmentValues = [:]
         super.tearDown()
     }
 
@@ -112,6 +135,44 @@ final class MLXModelManagerTests: XCTestCase {
         XCTAssertNil(HuggingFaceEnvironment.currentValue(for: "HF_HUB_DISABLE_IMPLICIT_TOKEN"))
     }
 
+    func testCurrentValuePreservesEmptyString() {
+        setenv("HF_HUB_OFFLINE", "", 1)
+
+        XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "HF_HUB_OFFLINE"), "")
+    }
+
+    func testOfflineModelLoadingEnvironmentSerializesConcurrentOperations() async throws {
+        let firstStarted = expectation(description: "first operation started")
+        let releaseFirstOperation = TestGate()
+        let secondStarted = TestFlag()
+
+        let firstTask = Task {
+            try await HuggingFaceEnvironment.withOfflineModelLoadingEnvironment {
+                firstStarted.fulfill()
+                await releaseFirstOperation.wait()
+            }
+        }
+
+        await fulfillment(of: [firstStarted], timeout: 1.0)
+
+        let secondTask = Task {
+            try await HuggingFaceEnvironment.withOfflineModelLoadingEnvironment {
+                await secondStarted.setTrue()
+            }
+        }
+
+        try await Task.sleep(for: .milliseconds(50))
+        let secondStartedBeforeRelease = await secondStarted.currentValue()
+        XCTAssertFalse(secondStartedBeforeRelease)
+
+        await releaseFirstOperation.open()
+        _ = try await firstTask.value
+        _ = try await secondTask.value
+
+        let secondStartedAfterRelease = await secondStarted.currentValue()
+        XCTAssertTrue(secondStartedAfterRelease)
+    }
+
     func testTerminalStatusMessagePreservesDetailedErrors() {
         XCTAssertEqual(
             MLXModelManager.terminalStatusMessage(
@@ -126,5 +187,32 @@ final class MLXModelManagerTests: XCTestCase {
             "Error: Download failed (exit code: 2)"
         )
         XCTAssertNil(MLXModelManager.terminalStatusMessage(existingStatus: nil, exitStatus: 0))
+    }
+}
+
+private actor TestGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func open() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private actor TestFlag {
+    private(set) var value = false
+
+    func setTrue() {
+        value = true
+    }
+
+    func currentValue() -> Bool {
+        value
     }
 }
