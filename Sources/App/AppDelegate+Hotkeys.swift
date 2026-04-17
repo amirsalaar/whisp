@@ -82,6 +82,7 @@ extension AppDelegate {
                 self?.handlePressAndHoldKeyDown()
             },
             keyUpHandler: pressAndHoldKeyUpHandler(for: configuration),
+            mode: configuration.mode,
             readinessHandler: { readiness, message in
                 FnGlobeHotkeyPreferenceStore.setReadiness(readiness, message: message)
             },

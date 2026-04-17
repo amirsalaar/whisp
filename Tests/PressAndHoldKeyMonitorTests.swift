@@ -139,6 +139,45 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
         XCTAssertEqual(keyDownCount, 1)
     }
 
+    func testDefaultRightCommandActivationStartsImmediately() {
+        var keyDownCount = 0
+        let monitor = PressAndHoldKeyMonitor(
+            configuration: PressAndHoldConfiguration(enabled: true, key: .rightCommand, mode: .hold),
+            keyDownHandler: { keyDownCount += 1 }
+        )
+
+        monitor.processSemanticEvent(.modifierKeyChanged(isPressed: true))
+        drainMainQueue()
+
+        XCTAssertEqual(keyDownCount, 1)
+    }
+
+    func testDefaultLeftCommandActivationAllowsCombinationWindow() {
+        var keyDownCount = 0
+        let monitor = PressAndHoldKeyMonitor(
+            configuration: PressAndHoldConfiguration(enabled: true, key: .leftCommand, mode: .hold),
+            keyDownHandler: { keyDownCount += 1 }
+        )
+
+        monitor.processSemanticEvent(.modifierKeyChanged(isPressed: true))
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+
+        XCTAssertEqual(keyDownCount, 0)
+    }
+
+    func testDefaultLeftCommandToggleStartsImmediately() {
+        var keyDownCount = 0
+        let monitor = PressAndHoldKeyMonitor(
+            configuration: PressAndHoldConfiguration(enabled: true, key: .leftCommand, mode: .toggle),
+            keyDownHandler: { keyDownCount += 1 }
+        )
+
+        monitor.processSemanticEvent(.modifierKeyChanged(isPressed: true))
+        drainMainQueue()
+
+        XCTAssertEqual(keyDownCount, 1)
+    }
+
     func testRepeatedKeyDownIgnoredWhilePressed() {
         var keyDownCount = 0
         let monitor = makeMonitor(
@@ -205,9 +244,10 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
 
     func testOtherKeyPressedCancelsActivation() {
         var keyDownCount = 0
-        let monitor = makeMonitor(
+        let monitor = PressAndHoldKeyMonitor(
             configuration: PressAndHoldConfiguration(enabled: true, key: .rightCommand, mode: .hold),
-            keyDownHandler: { keyDownCount += 1 }
+            keyDownHandler: { keyDownCount += 1 },
+            holdDelay: 0.1
         )
 
         monitor.processSemanticEvent(.modifierKeyChanged(isPressed: true))
@@ -236,9 +276,10 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
 
     func testHandleKeyDownTriggersCombination() {
         var keyDownCount = 0
-        let monitor = makeMonitor(
+        let monitor = PressAndHoldKeyMonitor(
             configuration: PressAndHoldConfiguration(enabled: true, key: .rightCommand, mode: .hold),
-            keyDownHandler: { keyDownCount += 1 }
+            keyDownHandler: { keyDownCount += 1 },
+            holdDelay: 0.1
         )
 
         monitor.processSemanticEvent(.modifierKeyChanged(isPressed: true))
