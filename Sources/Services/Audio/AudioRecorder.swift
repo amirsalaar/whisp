@@ -154,9 +154,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
                 recordingURL = nil
 
                 if UserDefaults.standard.autoBoostMicrophoneVolume {
-                    Task {
-                        await volumeManager.restoreMicrophoneVolume()
-                    }
+                    _ = await volumeManager.restoreMicrophoneVolume()
                 }
 
                 checkMicrophonePermission()
@@ -175,9 +173,7 @@ internal class AudioRecorder: NSObject, ObservableObject {
             recordingURL = nil
             // Restore volume if recording failed and we boosted it
             if UserDefaults.standard.autoBoostMicrophoneVolume {
-                Task {
-                    await volumeManager.restoreMicrophoneVolume()
-                }
+                _ = await volumeManager.restoreMicrophoneVolume()
             }
             // Recheck permissions if recording failed
             checkMicrophonePermission()

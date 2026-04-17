@@ -149,6 +149,7 @@ internal struct OnboardingView: View {
     @State private var hotkeyPickerSelection = PressAndHoldConfiguration.defaults.key.rawValue
     @State private var previousPressAndHoldKeyIdentifier = PressAndHoldConfiguration.defaults.key.rawValue
     @State private var pendingPressAndHoldKeyIdentifier: String?
+    @State private var suppressPressAndHoldChangeHandlers = false
     @State private var showFnWarningConfirmation = false
 
     // Smart Paste
@@ -704,6 +705,7 @@ internal struct OnboardingView: View {
                 .toggleStyle(.switch)
                 .frame(maxWidth: 360)
                 .onChange(of: pressAndHoldEnabled) { _, _ in
+                    guard !suppressPressAndHoldChangeHandlers else { return }
                     publishPressAndHoldConfiguration()
                 }
 
@@ -717,6 +719,7 @@ internal struct OnboardingView: View {
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260)
                         .onChange(of: hotkeyPickerSelection) { oldValue, newValue in
+                            guard !suppressPressAndHoldChangeHandlers else { return }
                             handlePressAndHoldKeyChange(from: oldValue, to: newValue)
                         }
 
@@ -728,6 +731,7 @@ internal struct OnboardingView: View {
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260)
                         .onChange(of: pressAndHoldModeRaw) { _, _ in
+                            guard !suppressPressAndHoldChangeHandlers else { return }
                             publishPressAndHoldConfiguration()
                         }
 
@@ -1365,33 +1369,45 @@ internal struct OnboardingView: View {
     }
 
     private func applyHotkeySelectionState(_ state: OnboardingPressAndHoldSelectionState) {
-        pressAndHoldKeyIdentifier = state.persistedKeyIdentifier
-        hotkeyPickerSelection = state.pickerSelection
-        previousPressAndHoldKeyIdentifier = state.previousKeyIdentifier
-        pendingPressAndHoldKeyIdentifier = state.pendingKeyIdentifier
-        showFnWarningConfirmation = state.showFnWarningConfirmation
+        updatePressAndHoldFormState {
+            pressAndHoldKeyIdentifier = state.persistedKeyIdentifier
+            hotkeyPickerSelection = state.pickerSelection
+            previousPressAndHoldKeyIdentifier = state.previousKeyIdentifier
+            pendingPressAndHoldKeyIdentifier = state.pendingKeyIdentifier
+            showFnWarningConfirmation = state.showFnWarningConfirmation
+        }
+    }
+
+    private func updatePressAndHoldFormState(_ updates: () -> Void) {
+        suppressPressAndHoldChangeHandlers = true
+        updates()
+        DispatchQueue.main.async {
+            suppressPressAndHoldChangeHandlers = false
+        }
     }
 
     private func syncPressAndHoldConfiguration() {
         let configuration = PressAndHoldSettings.configuration()
 
-        if pressAndHoldEnabled != configuration.enabled {
-            pressAndHoldEnabled = configuration.enabled
-        }
+        updatePressAndHoldFormState {
+            if pressAndHoldEnabled != configuration.enabled {
+                pressAndHoldEnabled = configuration.enabled
+            }
 
-        if pressAndHoldKeyIdentifier != configuration.key.rawValue {
-            pressAndHoldKeyIdentifier = configuration.key.rawValue
-        }
+            if pressAndHoldKeyIdentifier != configuration.key.rawValue {
+                pressAndHoldKeyIdentifier = configuration.key.rawValue
+            }
 
-        if hotkeyPickerSelection != configuration.key.rawValue {
-            hotkeyPickerSelection = configuration.key.rawValue
-        }
+            if hotkeyPickerSelection != configuration.key.rawValue {
+                hotkeyPickerSelection = configuration.key.rawValue
+            }
 
-        previousPressAndHoldKeyIdentifier = configuration.key.rawValue
-        pendingPressAndHoldKeyIdentifier = nil
+            previousPressAndHoldKeyIdentifier = configuration.key.rawValue
+            pendingPressAndHoldKeyIdentifier = nil
 
-        if pressAndHoldModeRaw != configuration.mode.rawValue {
-            pressAndHoldModeRaw = configuration.mode.rawValue
+            if pressAndHoldModeRaw != configuration.mode.rawValue {
+                pressAndHoldModeRaw = configuration.mode.rawValue
+            }
         }
     }
 
@@ -1411,15 +1427,17 @@ internal struct OnboardingView: View {
     }
 
     private func applyPressAndHoldKeyIdentifier(_ keyIdentifier: String) {
-        if hotkeyPickerSelection != keyIdentifier {
-            hotkeyPickerSelection = keyIdentifier
-        }
+        updatePressAndHoldFormState {
+            if hotkeyPickerSelection != keyIdentifier {
+                hotkeyPickerSelection = keyIdentifier
+            }
 
-        if pressAndHoldKeyIdentifier != keyIdentifier {
-            pressAndHoldKeyIdentifier = keyIdentifier
-        }
+            if pressAndHoldKeyIdentifier != keyIdentifier {
+                pressAndHoldKeyIdentifier = keyIdentifier
+            }
 
-        previousPressAndHoldKeyIdentifier = keyIdentifier
+            previousPressAndHoldKeyIdentifier = keyIdentifier
+        }
         publishPressAndHoldConfiguration()
     }
 

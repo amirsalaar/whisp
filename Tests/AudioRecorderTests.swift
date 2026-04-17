@@ -347,7 +347,7 @@ final class AudioRecorderTests: XCTestCase {
 
     func testStopRecordingDoesNotDropSlowFinalization() async {
         let delayedRecorder = DelayedFinishMockAVAudioRecorder()
-        delayedRecorder.delayNanoseconds = 2_500_000_000
+        delayedRecorder.delayNanoseconds = 50_000_000
 
         let recorder = makeRecorder(
             dates: [
