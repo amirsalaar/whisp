@@ -279,6 +279,7 @@ internal struct FloatingMicrophoneDockView: View {
                     .frame(minWidth: 300)
                     .frame(height: 44)
                     .background(capsuleBackground)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.isPrimaryActionEnabled)
