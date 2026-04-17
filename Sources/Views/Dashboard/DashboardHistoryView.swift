@@ -27,7 +27,7 @@ internal struct DashboardHistoryView: View {
                 .foregroundStyle(.quaternary)
             Text("No transcriptions yet")
                 .font(.system(size: 15, weight: .medium, design: .serif))
-            Text("Your transcription history will appear here.")
+            Text("Record something to see it here.")
                 .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
         }
