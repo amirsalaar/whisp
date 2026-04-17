@@ -10,7 +10,7 @@ internal enum LocalizedStrings {
             comment: "Status when app is ready to record")
         
         static let recording = NSLocalizedString("ui.recording", 
-            value: "Recording...", 
+            value: "Listening…", 
             comment: "Status during audio recording")
         
         static let processing = NSLocalizedString("ui.processing", 
@@ -18,11 +18,11 @@ internal enum LocalizedStrings {
             comment: "Status during transcription processing")
         
         static let success = NSLocalizedString("ui.success", 
-            value: "Success!", 
+            value: "Done", 
             comment: "Status when transcription succeeds")
         
         static let microphoneAccessRequired = NSLocalizedString("ui.microphone_access_required", 
-            value: "Microphone access required", 
+            value: "Mic access needed", 
             comment: "Status when microphone permission is denied")
         
         static let spaceToRecord = NSLocalizedString("ui.space_to_record", 

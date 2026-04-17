@@ -15,17 +15,17 @@ internal enum AppStatus: Equatable {
         case .error(let message):
             return message
         case .recording:
-            return "Recording..."
+            return "Listening…"
         case .processing(let message):
             return message
         case .downloadingModel(let message):
             return message
         case .success:
-            return "Success!"
+            return "Done"
         case .ready:
             return "Ready"
         case .permissionRequired:
-            return "Microphone access required"
+            return "Mic access needed"
         }
     }
     
