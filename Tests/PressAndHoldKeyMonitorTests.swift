@@ -103,6 +103,16 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
         )
     }
 
+    func testUpdatePostsSettingsChangedNotification() {
+        let defaults = makeDefaults()
+        let configuration = PressAndHoldConfiguration(enabled: true, key: .rightCommand, mode: .hold)
+        let expectation = expectation(forNotification: .pressAndHoldSettingsChanged, object: nil)
+
+        PressAndHoldSettings.update(configuration, using: defaults)
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
     // MARK: - start()
 
     func testStartReturnsFalseForGlobeKey() {
