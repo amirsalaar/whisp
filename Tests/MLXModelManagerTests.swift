@@ -4,6 +4,19 @@ import XCTest
 
 @MainActor
 final class MLXModelManagerTests: XCTestCase {
+    override func tearDown() {
+        let environmentKeys: [String] = [
+            "HF_HUB_OFFLINE",
+            "TRANSFORMERS_OFFLINE",
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN",
+        ]
+
+        for key in environmentKeys {
+            unsetenv(key)
+        }
+        super.tearDown()
+    }
+
     func testRefreshModelListFindsModelsInsideHubCache() async throws {
         let cacheRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -93,5 +106,39 @@ final class MLXModelManagerTests: XCTestCase {
         let message = MLXModelManager.formattedDownloadFailure(detailedMessage: nil, exitStatus: 1)
 
         XCTAssertEqual(message, "Error: Download failed (exit code: 1)")
+    }
+
+    func testDownloadProcessEnvironmentClearsOfflineFlags() {
+        let cacheRoot = URL(fileURLWithPath: "/tmp/whisp-hf-cache", isDirectory: true)
+        let environment = HuggingFaceEnvironment.downloadProcessEnvironment(
+            base: [
+                "PATH": "/usr/bin",
+                "HF_HUB_OFFLINE": "1",
+                "TRANSFORMERS_OFFLINE": "1",
+            ],
+            cacheDirectory: cacheRoot
+        )
+
+        XCTAssertEqual(environment["PATH"], "/usr/bin")
+        XCTAssertNil(environment["HF_HUB_OFFLINE"])
+        XCTAssertNil(environment["TRANSFORMERS_OFFLINE"])
+        XCTAssertEqual(environment["HF_HOME"], cacheRoot.path)
+        XCTAssertEqual(environment["HF_HUB_CACHE"], "\(cacheRoot.path)/hub")
+    }
+
+    func testOfflineModelLoadingEnvironmentRestoresPreviousValues() async throws {
+        setenv("HF_HUB_OFFLINE", "0", 1)
+        unsetenv("TRANSFORMERS_OFFLINE")
+        unsetenv("HF_HUB_DISABLE_IMPLICIT_TOKEN")
+
+        try await HuggingFaceEnvironment.withOfflineModelLoadingEnvironment {
+            XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "HF_HUB_OFFLINE"), "1")
+            XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "TRANSFORMERS_OFFLINE"), "1")
+            XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "HF_HUB_DISABLE_IMPLICIT_TOKEN"), "1")
+        }
+
+        XCTAssertEqual(HuggingFaceEnvironment.currentValue(for: "HF_HUB_OFFLINE"), "0")
+        XCTAssertNil(HuggingFaceEnvironment.currentValue(for: "TRANSFORMERS_OFFLINE"))
+        XCTAssertNil(HuggingFaceEnvironment.currentValue(for: "HF_HUB_DISABLE_IMPLICIT_TOKEN"))
     }
 }

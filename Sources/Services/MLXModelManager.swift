@@ -203,6 +203,8 @@ internal final class MLXModelManager {
             # Show progress
             os.environ.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '0')
             os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
+            os.environ.pop('HF_HUB_OFFLINE', None)
+            os.environ.pop('TRANSFORMERS_OFFLINE', None)
 
             repo = "\(repo)"
 
@@ -211,7 +213,7 @@ internal final class MLXModelManager {
                 from huggingface_hub import snapshot_download
 
                 # Download files only - don't load into memory
-                path = snapshot_download(repo)
+                path = snapshot_download(repo, cache_dir=os.environ.get('HF_HUB_CACHE'))
                 print(json.dumps({"status": "complete", "message": "Download complete"}), flush=True)
 
             except ImportError as e:
@@ -225,11 +227,10 @@ internal final class MLXModelManager {
         process.arguments = ["-c", pythonScript]
 
         // Inherit environment and set HF_HOME to Application Support cache
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONUNBUFFERED"] = "1"
-        // Set HuggingFace cache to Application Support instead of home directory
-        env["HF_HOME"] = cacheDirectory.path
-        process.environment = env
+        process.environment = HuggingFaceEnvironment.downloadProcessEnvironment(
+            base: ProcessInfo.processInfo.environment,
+            cacheDirectory: cacheDirectory
+        )
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -427,6 +428,8 @@ internal final class MLXModelManager {
             # Allow downloads; avoid implicit token usage
             os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
             os.environ.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '0')
+            os.environ.pop('HF_HUB_OFFLINE', None)
+            os.environ.pop('TRANSFORMERS_OFFLINE', None)
 
             try:
                 from parakeet_mlx import from_pretrained
@@ -441,11 +444,10 @@ internal final class MLXModelManager {
         process.arguments = ["-c", pythonScript]
 
         // Inherit environment and set HF_HOME to Application Support cache
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONUNBUFFERED"] = "1"
-        // Set HuggingFace cache to Application Support instead of home directory
-        env["HF_HOME"] = cacheDirectory.path
-        process.environment = env
+        process.environment = HuggingFaceEnvironment.downloadProcessEnvironment(
+            base: ProcessInfo.processInfo.environment,
+            cacheDirectory: cacheDirectory
+        )
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()

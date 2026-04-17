@@ -287,7 +287,7 @@ internal struct DashboardProvidersView: View {
                 .help("Refresh model list")
             }
 
-            Text("Cache: ~/.cache/huggingface/hub")
+            Text("Cache: \(HuggingFaceCache.hubDirectory().path)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
