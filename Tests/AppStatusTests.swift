@@ -8,12 +8,12 @@ final class AppStatusTests: XCTestCase {
     
     func testAppStatusMessages() {
         XCTAssertEqual(AppStatus.error("Test error").message, "Test error")
-        XCTAssertEqual(AppStatus.recording.message, "Recording...")
+        XCTAssertEqual(AppStatus.recording.message, "Listening…")
         XCTAssertEqual(AppStatus.processing("Converting...").message, "Converting...")
         XCTAssertEqual(AppStatus.downloadingModel("Downloading Base…").message, "Downloading Base…")
-        XCTAssertEqual(AppStatus.success.message, "Success!")
+        XCTAssertEqual(AppStatus.success.message, "Done")
         XCTAssertEqual(AppStatus.ready.message, "Ready")
-        XCTAssertEqual(AppStatus.permissionRequired.message, "Microphone access required")
+        XCTAssertEqual(AppStatus.permissionRequired.message, "Mic access needed")
     }
     
     func testAppStatusColors() {
