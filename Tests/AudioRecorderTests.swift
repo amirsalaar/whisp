@@ -162,7 +162,7 @@ final class AudioRecorderTests: XCTestCase {
                 return nil
             },
             defaultInputDeviceProvider: {
-                    MicrophoneInputDeviceInfo(
+                MicrophoneInputDeviceInfo(
                     deviceID: 42,
                     uid: "built-in-mic-uid",
                     name: "MacBook Pro Microphone"
@@ -234,7 +234,7 @@ final class AudioRecorderTests: XCTestCase {
             },
             selectedInputDeviceResolver: { selection in
                 if selection == "usb-mic-uid" {
-                        return MicrophoneInputDeviceInfo(
+                    return MicrophoneInputDeviceInfo(
                         deviceID: 314,
                         uid: "usb-mic-uid",
                         name: "USB Microphone"
@@ -271,7 +271,7 @@ final class AudioRecorderTests: XCTestCase {
             inputDeviceSessionFactory: { _, _ in inputSession },
             selectedInputDeviceResolver: { selection in
                 if selection == "usb-mic-uid" {
-                        return MicrophoneInputDeviceInfo(
+                    return MicrophoneInputDeviceInfo(
                         deviceID: 271,
                         uid: "usb-mic-uid",
                         name: "USB Microphone"

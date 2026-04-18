@@ -256,11 +256,12 @@ internal class AudioRecorder: NSObject, ObservableObject {
         selectedMicrophoneID: String,
         selectedInputDevice: MicrophoneInputDeviceInfo?
     ) async {
-        let selectedMicrophoneDescription = if let selectedInputDevice {
-            "\(selectedInputDevice.name) [\(selectedInputDevice.uid)]"
-        } else {
-            volumeManager.inputDeviceDescription(forSelection: selectedMicrophoneID)
-        }
+        let selectedMicrophoneDescription =
+            if let selectedInputDevice {
+                "\(selectedInputDevice.name) [\(selectedInputDevice.uid)]"
+            } else {
+                volumeManager.inputDeviceDescription(forSelection: selectedMicrophoneID)
+            }
         let routeDescription: String
 
         if let selectedInputDevice {
