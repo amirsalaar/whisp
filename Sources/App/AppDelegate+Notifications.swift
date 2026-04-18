@@ -1,6 +1,6 @@
 import AppKit
 
-internal extension AppDelegate {
+extension AppDelegate {
     func setupNotificationObservers() {
         NotificationCenter.default.addObserver(
             self,

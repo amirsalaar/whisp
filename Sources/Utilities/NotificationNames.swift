@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Typed Notification Names
 
-internal extension Notification.Name {
+extension Notification.Name {
     // MARK: - Settings and Configuration
     static let pressAndHoldSettingsChanged = Notification.Name("PressAndHoldSettingsChanged")
 
