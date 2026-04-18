@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Whisp
 
 final class OnboardingHotkeySelectionTests: XCTestCase {

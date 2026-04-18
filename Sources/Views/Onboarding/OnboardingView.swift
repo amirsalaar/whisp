@@ -65,7 +65,7 @@ internal enum OnboardingPressAndHoldSelectionCoordinator {
             to: newValue,
             warningAcknowledged: warningAcknowledged
         ) {
-        case let .persist(key):
+        case .persist(let key):
             state.persistedKeyIdentifier = key.rawValue
             state.pickerSelection = key.rawValue
             state.previousKeyIdentifier = key.rawValue
@@ -73,7 +73,7 @@ internal enum OnboardingPressAndHoldSelectionCoordinator {
             state.showFnWarningConfirmation = false
             return key.rawValue
 
-        case let .requireConfirmation(previousSelection, pendingSelection):
+        case .requireConfirmation(let previousSelection, let pendingSelection):
             state.previousKeyIdentifier = previousSelection.rawValue
             state.pendingKeyIdentifier = pendingSelection.rawValue
             state.pickerSelection = previousSelection.rawValue
@@ -357,7 +357,8 @@ internal struct OnboardingView: View {
                 primaryDisabled: micStatus != .authorized
             )
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) {
+            _ in
             micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         }
     }
@@ -708,7 +709,8 @@ internal struct OnboardingView: View {
                 icon: "keyboard.fill",
                 iconColor: .purple,
                 title: "Recording Hotkey",
-                subtitle: "Choose how you want to start recording. If macOS needs a restart, Whisp will finish setup at the end."
+                subtitle:
+                    "Choose how you want to start recording. If macOS needs a restart, Whisp will finish setup at the end."
             )
 
             Spacer()
@@ -789,7 +791,8 @@ internal struct OnboardingView: View {
             syncPressAndHoldConfiguration()
             refreshCurrentHotkeySetup(notify: false)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) {
+            _ in
             syncPressAndHoldConfiguration()
             refreshCurrentHotkeySetup()
         }
@@ -830,7 +833,7 @@ internal struct OnboardingView: View {
 
             HStack(spacing: 10) {
                 Button("Open Settings") {
-                    inputMonitoringPermissionManager.openSystemSettings()
+                    openHotkeyInputMonitoringSettings()
                 }
             }
         }
@@ -865,7 +868,7 @@ internal struct OnboardingView: View {
 
                 if showsFnGlobeSettingsActions {
                     Button("Open Settings") {
-                        inputMonitoringPermissionManager.openSystemSettings()
+                        openHotkeyInputMonitoringSettings()
                     }
 
                     Button("Refresh Status") {
@@ -902,7 +905,7 @@ internal struct OnboardingView: View {
                     || modifierKeyReadiness == .unavailable
                 {
                     Button("Open Settings") {
-                        inputMonitoringPermissionManager.openSystemSettings()
+                        openHotkeyInputMonitoringSettings()
                     }
 
                     Button("Refresh Status") {
@@ -1139,9 +1142,12 @@ internal struct OnboardingView: View {
                         .fill(doneAccentColor.opacity(0.15))
                         .frame(width: 72, height: 72)
 
-                    Image(systemName: requiresHotkeyRestart ? "arrow.clockwise.circle.fill" : "checkmark.circle.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(doneAccentColor)
+                    Image(
+                        systemName: requiresHotkeyRestart
+                            ? "arrow.clockwise.circle.fill" : "checkmark.circle.fill"
+                    )
+                    .font(.system(size: 44))
+                    .foregroundStyle(doneAccentColor)
                 }
 
                 Text(requiresHotkeyRestart ? "One More Step" : "You're All Set")
@@ -1372,17 +1378,21 @@ internal struct OnboardingView: View {
     private var hotkeyRestartMessage: String {
         if isFnGlobeSelected {
             if fnGlobeReadiness == .requiresInputMonitoring {
-                return "Grant Input Monitoring, set Keyboard > Press Globe key to Do Nothing if macOS is using the key, then finish onboarding and reopen Whisp. If you do not want to restart now, you can keep using the dock or menu bar."
+                return
+                    "Grant Input Monitoring, set Keyboard > Press Globe key to Do Nothing if macOS is using the key, then finish onboarding and reopen Whisp. If you do not want to restart now, you can keep using the dock or menu bar."
             }
 
-            return "Whisp still needs a fresh launch before it can verify Fn / Globe reliably. Finish onboarding and reopen the app, then press Fn / Globe once to confirm recording starts."
+            return
+                "Whisp still needs a fresh launch before it can verify Fn / Globe reliably. Finish onboarding and reopen the app, then press Fn / Globe once to confirm recording starts."
         }
 
         if modifierKeyReadiness == .requiresInputMonitoring {
-            return "Grant Input Monitoring, then finish onboarding and reopen Whisp before testing the hotkey. If you do not want to restart now, you can keep using the dock or menu bar."
+            return
+                "Grant Input Monitoring, then finish onboarding and reopen Whisp before testing the hotkey. If you do not want to restart now, you can keep using the dock or menu bar."
         }
 
-        return "Whisp still needs a fresh launch before it can verify the hotkey reliably. Finish onboarding and reopen the app, then press the hotkey once to confirm recording starts."
+        return
+            "Whisp still needs a fresh launch before it can verify the hotkey reliably. Finish onboarding and reopen the app, then press the hotkey once to confirm recording starts."
     }
 
     private var isHotkeyReadyForUse: Bool {
@@ -1415,10 +1425,12 @@ internal struct OnboardingView: View {
         }
 
         if hotkeyStillNeedsPermission {
-            return "If you granted Input Monitoring, restart Whisp to retry hotkey setup. If not, you can finish now and enable the hotkey later in Settings."
+            return
+                "If you granted Input Monitoring, restart Whisp to retry hotkey setup. If not, you can finish now and enable the hotkey later in Settings."
         }
 
-        return "Restart Whisp to finish hotkey setup, then press it once to confirm recording starts. You can keep using the dock or menu bar if you want to restart later."
+        return
+            "Restart Whisp to finish hotkey setup, then press it once to confirm recording starts. You can keep using the dock or menu bar if you want to restart later."
     }
 
     private var canRestartApplication: Bool {
@@ -1641,6 +1653,11 @@ internal struct OnboardingView: View {
         _ = inputMonitoringPermissionManager.requestPermission()
     }
 
+    private func openHotkeyInputMonitoringSettings() {
+        requestedHotkeyPermissionInSession = true
+        inputMonitoringPermissionManager.openSystemSettings()
+    }
+
     private func downloadModel() {
         isDownloadingModel = true
         downloadError = nil
@@ -1754,7 +1771,8 @@ internal struct OnboardingView: View {
         configuration.activates = true
         configuration.createsNewApplicationInstance = true
 
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) {
+            _, error in
             DispatchQueue.main.async {
                 if let error {
                     Logger.app.error(

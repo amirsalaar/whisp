@@ -13,6 +13,7 @@ internal class ModelManager {
         _ progressCallback: @escaping (Progress) -> Void
     ) async throws -> URL
     typealias LoadModelOperation = (_ config: WhisperKitConfig) async throws -> Void
+    typealias AvailableStorageOperation = () async throws -> Int64
 
     static let shared = ModelManager()
 
@@ -28,8 +29,10 @@ internal class ModelManager {
     private var refreshTimer: Timer?
     private var isDeleteInProgress: Set<WhisperModel> = []
     private var activeDownloadTokens: [WhisperModel: UUID] = [:]
+    private var stageCleanupTasks: [WhisperModel: Task<Void, Never>] = [:]
     private let downloadVariantOperation: DownloadVariantOperation
     private let loadModelOperation: LoadModelOperation
+    private let availableStorageOperation: AvailableStorageOperation
 
     init(
         downloadVariantOperation: @escaping DownloadVariantOperation = {
@@ -42,10 +45,14 @@ internal class ModelManager {
         },
         loadModelOperation: @escaping LoadModelOperation = { config in
             _ = try await WhisperKit(config)
+        },
+        availableStorageOperation: @escaping AvailableStorageOperation = {
+            try await ModelManager.defaultAvailableStorageSpace()
         }
     ) {
         self.downloadVariantOperation = downloadVariantOperation
         self.loadModelOperation = loadModelOperation
+        self.availableStorageOperation = availableStorageOperation
 
         // Disable automatic file system watching to prevent unwanted re-downloads
         // setupFileSystemWatching()
@@ -62,6 +69,7 @@ internal class ModelManager {
         Task { @MainActor [weak self] in
             self?.fileSystemWatcher?.cancel()
             self?.refreshTimer?.invalidate()
+            self?.stageCleanupTasks.values.forEach { $0.cancel() }
         }
     }
 
@@ -105,6 +113,7 @@ internal class ModelManager {
             throw ModelError.alreadyDownloading
         }
 
+        cancelStageCleanup(for: model)
         downloadingModels.insert(model)
         downloadStages[model] = .preparing
         downloadProgress[model] = 0
@@ -118,20 +127,24 @@ internal class ModelManager {
         let maxStorageBytes = Int64(maxStorageGB * 1024 * 1024 * 1024)
 
         if currentModelsSize + requiredSpace > maxStorageBytes {
-            downloadingModels.remove(model)
-            downloadProgress.removeValue(forKey: model)
+            clearInFlightDownloadState(for: model)
             downloadStages.removeValue(forKey: model)
-            activeDownloadTokens.removeValue(forKey: model)
             throw ModelError.storageLimitExceeded
         }
 
         // Check available disk space
-        let availableSpace = try await getAvailableStorageSpace()
-        if availableSpace < requiredSpace + (100 * 1024 * 1024) {  // Add 100MB buffer
-            downloadingModels.remove(model)
-            downloadProgress.removeValue(forKey: model)
+        let availableSpace: Int64
+        do {
+            availableSpace = try await availableStorageOperation()
+        } catch {
+            clearInFlightDownloadState(for: model)
             downloadStages.removeValue(forKey: model)
-            activeDownloadTokens.removeValue(forKey: model)
+            throw error
+        }
+
+        if availableSpace < requiredSpace + (100 * 1024 * 1024) {  // Add 100MB buffer
+            clearInFlightDownloadState(for: model)
+            downloadStages.removeValue(forKey: model)
             throw ModelError.insufficientStorage
         }
 
@@ -169,33 +182,24 @@ internal class ModelManager {
             try await Task.sleep(for: .milliseconds(500))  // 0.5 seconds
 
             // Clean up download state on success
-            downloadingModels.remove(model)
-            downloadProgress.removeValue(forKey: model)
+            clearInFlightDownloadState(for: model)
             downloadStages[model] = .ready
-            downloadEstimates.removeValue(forKey: model)
             downloadedModels.insert(model)
 
             // Clear the ready stage after a moment
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                ModelManager.shared.downloadStages.removeValue(forKey: model)
-            }
+            scheduleStageCleanup(for: model, after: .seconds(2))
 
             // Send system notification
             await sendDownloadCompletionNotification(for: model)
 
         } catch {
             // Clean up download state on error
-            downloadingModels.remove(model)
-            downloadProgress.removeValue(forKey: model)
+            clearInFlightDownloadState(for: model)
             downloadStages[model] = .failed(error.localizedDescription)
-            downloadEstimates.removeValue(forKey: model)
             downloadedModels.remove(model)
-            activeDownloadTokens.removeValue(forKey: model)
 
             // Clear the error stage after a moment
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                ModelManager.shared.downloadStages.removeValue(forKey: model)
-            }
+            scheduleStageCleanup(for: model, after: .seconds(5))
 
             throw error
         }
@@ -234,6 +238,35 @@ internal class ModelManager {
         guard case .downloading? = downloadStages[model] else { return }
 
         updateDownloadProgress(model, progress: max(0, min(1, fractionCompleted)))
+    }
+
+    @MainActor
+    private func clearInFlightDownloadState(for model: WhisperModel) {
+        cancelStageCleanup(for: model)
+        downloadingModels.remove(model)
+        downloadProgress.removeValue(forKey: model)
+        downloadEstimates.removeValue(forKey: model)
+        activeDownloadTokens.removeValue(forKey: model)
+    }
+
+    @MainActor
+    private func scheduleStageCleanup(for model: WhisperModel, after delay: Duration) {
+        cancelStageCleanup(for: model)
+
+        stageCleanupTasks[model] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self else { return }
+            guard let stage = self.downloadStages[model], !stage.isActive else { return }
+
+            self.downloadStages.removeValue(forKey: model)
+            self.stageCleanupTasks.removeValue(forKey: model)
+        }
+    }
+
+    @MainActor
+    private func cancelStageCleanup(for model: WhisperModel) {
+        stageCleanupTasks[model]?.cancel()
+        stageCleanupTasks.removeValue(forKey: model)
     }
 
     nonisolated func deleteModel(_ model: WhisperModel) async throws {
@@ -385,7 +418,7 @@ internal class ModelManager {
         return WhisperKitStorage.isModelDownloaded(model)
     }
 
-    private nonisolated func getAvailableStorageSpace() async throws -> Int64 {
+    private static func defaultAvailableStorageSpace() async throws -> Int64 {
         guard let downloadBasePath = WhisperKitStorage.downloadBaseDirectory() else {
             throw ModelError.applicationSupportDirectoryNotFound
         }

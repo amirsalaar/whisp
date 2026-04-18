@@ -229,7 +229,8 @@ final class ModelManagerDownloadProgressTests: XCTestCase {
                     await progressCallbackCapture.send(fractionCompleted: 0.25)
 
                     let baseDirectory = resolvedDownloadBase ?? downloadBase
-                    let modelDirectory = baseDirectory
+                    let modelDirectory =
+                        baseDirectory
                         .appendingPathComponent(
                             "models/argmaxinc/whisperkit-coreml/\(variant)",
                             isDirectory: true
@@ -267,6 +268,43 @@ final class ModelManagerDownloadProgressTests: XCTestCase {
 
         let finalStage: DownloadStage? = await MainActor.run { resolvedManager.getDownloadStage(for: model) }
         XCTAssertEqual(finalStage, DownloadStage.ready)
+    }
+
+    func testStorageProbeFailureClearsInFlightDownloadState() async {
+        let model = WhisperModel.base
+        let manager = await MainActor.run {
+            ModelManager(
+                downloadVariantOperation: { _, _, _ in
+                    XCTFail("Download should not start when storage probing fails")
+                    return URL(fileURLWithPath: "/tmp/unreachable")
+                },
+                loadModelOperation: { _ in
+                    XCTFail("Model loading should not start when storage probing fails")
+                },
+                availableStorageOperation: {
+                    throw ModelError.applicationSupportDirectoryNotFound
+                }
+            )
+        }
+
+        do {
+            try await manager.downloadModel(model)
+            XCTFail("Storage probe failure should be surfaced")
+        } catch let error as ModelError {
+            guard case .applicationSupportDirectoryNotFound = error else {
+                return XCTFail("Unexpected model error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let isMarkedDownloading = await MainActor.run { manager.downloadingModels.contains(model) }
+        let stage = await MainActor.run { manager.getDownloadStage(for: model) }
+        let progress = await MainActor.run { manager.downloadProgress[model] }
+
+        XCTAssertFalse(isMarkedDownloading)
+        XCTAssertNil(stage)
+        XCTAssertNil(progress)
     }
 
     private func waitUntil(
