@@ -287,14 +287,27 @@ class SpeechToTextServiceTests: XCTestCase {
     func testProviderSelectionPerformance() {
         UserDefaults.standard.set(true, forKey: "useOpenAI")
 
+        guard let service else {
+            return XCTFail("Service should be initialized")
+        }
+        guard let testAudioURL else {
+            return XCTFail("Test audio URL should be initialized")
+        }
+
         measure {
+            let expectation = XCTestExpectation(description: "Transcription attempt completes")
+
             Task {
+                defer { expectation.fulfill() }
+
                 do {
                     _ = try await service.transcribe(audioURL: testAudioURL)
                 } catch {
                     // Expected to fail due to missing API key
                 }
             }
+
+            wait(for: [expectation], timeout: 5.0)
         }
     }
 
@@ -377,31 +390,44 @@ extension SpeechToTextServiceTests {
         return audioURL
     }
 
+    private func assertExpectedParakeetSetupOutcome(
+        _ error: Error,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch error {
+        case let speechError as SpeechToTextError:
+            XCTAssertFalse(speechError.localizedDescription.isEmpty, file: file, line: line)
+        case let parakeetError as ParakeetError:
+            XCTAssertEqual(parakeetError, .modelNotReady, file: file, line: line)
+        case let uvError as UvError:
+            XCTAssertFalse(uvError.localizedDescription.isEmpty, file: file, line: line)
+        default:
+            XCTFail(
+                "Expected SpeechToTextError, ParakeetError, or UvError, got \(error)",
+                file: file,
+                line: line
+            )
+        }
+    }
+
     // MARK: - Parakeet Provider Tests
 
     func testTranscribeWithParakeetProviderMissingPython() async {
         let invalidPythonPath = "/invalid/python/path"
         UserDefaults.standard.set(invalidPythonPath, forKey: "parakeetPythonPath")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "parakeetPythonPath")
+        }
 
         do {
             _ = try await service.transcribe(audioURL: testAudioURL, provider: .parakeet)
             XCTFail("Expected error due to invalid audio or Python path")
-        } catch let error as SpeechToTextError {
-            // The test can fail either due to the invalid Python path or a wrapped Parakeet setup error.
-            let errorMessage = error.localizedDescription
-            let hasExpectedError =
-                errorMessage.contains("Parakeet error") || errorMessage.contains("Python")
-                || errorMessage.contains("not found") || errorMessage.contains("corrupted")
-                || errorMessage.contains("unreadable")
-            XCTAssertTrue(hasExpectedError, "Error should indicate audio or Python issue: \(errorMessage)")
-        } catch let error as ParakeetError {
-            XCTAssertEqual(error, .modelNotReady)
         } catch {
-            XCTFail("Expected SpeechToTextError or modelNotReady, got \(error)")
+            // SpeechToTextService now routes through managed uv bootstrap, so CI can fail in
+            // bootstrap before Parakeet itself is ready. Any setup error is acceptable here.
+            assertExpectedParakeetSetupOutcome(error)
         }
-
-        // Clean up
-        UserDefaults.standard.removeObject(forKey: "parakeetPythonPath")
     }
 
     func testParakeetProviderWithSystemPython() async {
@@ -410,22 +436,16 @@ extension SpeechToTextServiceTests {
         // Only test if system Python exists
         if FileManager.default.fileExists(atPath: systemPythonPath) {
             UserDefaults.standard.set(systemPythonPath, forKey: "parakeetPythonPath")
+            defer {
+                UserDefaults.standard.removeObject(forKey: "parakeetPythonPath")
+            }
 
             do {
                 _ = try await service.transcribe(audioURL: testAudioURL, provider: .parakeet)
                 // If this succeeds, parakeet-mlx is installed
-            } catch let error as SpeechToTextError {
-                // Expected if parakeet-mlx is not installed or script not found
-                // Just verify we got a SpeechToTextError (which we did)
-                XCTAssertTrue(error.localizedDescription.count > 0)
-            } catch let error as ParakeetError {
-                XCTAssertEqual(error, .modelNotReady)
             } catch {
-                XCTFail("Expected SpeechToTextError or modelNotReady, got \(error)")
+                assertExpectedParakeetSetupOutcome(error)
             }
-
-            // Clean up
-            UserDefaults.standard.removeObject(forKey: "parakeetPythonPath")
         }
     }
 
