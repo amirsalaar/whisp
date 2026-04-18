@@ -66,6 +66,28 @@ final class AudioValidatorTests: XCTestCase {
         }
     }
 
+    func testValidateAudioFileAcceptsAudioWithLeadingSilence() async throws {
+        let url = try makeLeadingSilenceAudioFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let result = await AudioValidator.validateAudioFile(at: url)
+
+        guard case .valid = result else {
+            return XCTFail("Expected valid audio with leading silence, got \(result)")
+        }
+    }
+
+    func testValidateAudioFileAcceptsAudioWithMidFileSpeech() async throws {
+        let url = try makeMidFileSpeechAudioFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let result = await AudioValidator.validateAudioFile(at: url)
+
+        guard case .valid = result else {
+            return XCTFail("Expected valid audio with mid-file speech, got \(result)")
+        }
+    }
+
     func testValidateAudioFileDetectsCorruptedAudio() async throws {
         let url = try makeCorruptedAudioFile()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -151,6 +173,75 @@ final class AudioValidatorTests: XCTestCase {
                 userInfo: [NSLocalizedDescriptionKey: "Unable to create buffer"])
         }
         buffer.frameLength = frameCount
+
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+        return url
+    }
+
+    private func makeLeadingSilenceAudioFile() throws -> URL {
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1) else {
+            throw NSError(
+                domain: "AudioValidatorTests", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create audio format"])
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AudioValidatorTests-leading-silence-\(UUID().uuidString).wav")
+
+        let silentFrames: AVAudioFrameCount = 44_100
+        let toneFrames: AVAudioFrameCount = 8_192
+        let totalFrames = silentFrames + toneFrames
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
+            throw NSError(
+                domain: "AudioValidatorTests", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create buffer"])
+        }
+        buffer.frameLength = totalFrames
+
+        if let channelData = buffer.floatChannelData {
+            let samples = channelData[0]
+            for index in Int(silentFrames)..<Int(totalFrames) {
+                let toneIndex = index - Int(silentFrames)
+                samples[index] = sin(Float(toneIndex) * 0.1) * 0.25
+            }
+        }
+
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+        return url
+    }
+
+    private func makeMidFileSpeechAudioFile() throws -> URL {
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1) else {
+            throw NSError(
+                domain: "AudioValidatorTests", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create audio format"])
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AudioValidatorTests-mid-speech-\(UUID().uuidString).wav")
+
+        let leadingSilentFrames: AVAudioFrameCount = 70_000
+        let toneFrames: AVAudioFrameCount = 4_096
+        let trailingSilentFrames: AVAudioFrameCount = 120_000
+        let totalFrames = leadingSilentFrames + toneFrames + trailingSilentFrames
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
+            throw NSError(
+                domain: "AudioValidatorTests", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create buffer"])
+        }
+        buffer.frameLength = totalFrames
+
+        if let channelData = buffer.floatChannelData {
+            let samples = channelData[0]
+            let toneStartIndex = Int(leadingSilentFrames)
+            let toneEndIndex = Int(leadingSilentFrames + toneFrames)
+            for index in toneStartIndex..<toneEndIndex {
+                let toneIndex = index - toneStartIndex
+                samples[index] = sin(Float(toneIndex) * 0.1) * 0.25
+            }
+        }
 
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
         try file.write(from: buffer)

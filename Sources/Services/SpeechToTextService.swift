@@ -5,6 +5,7 @@ import os.log
 
 internal enum SpeechToTextError: Error, LocalizedError {
     case invalidURL
+    case invalidAudio(String)
     case apiKeyMissing(String)
     case transcriptionFailed(String)
     case localTranscriptionFailed(Error)
@@ -15,6 +16,8 @@ internal enum SpeechToTextError: Error, LocalizedError {
         switch self {
         case .invalidURL:
             return LocalizedStrings.Errors.invalidAudioFile
+        case .invalidAudio(let message):
+            return message
         case .apiKeyMissing(let provider):
             return LocalizedStrings.Errors.apiKeyMissing
                 .replacingOccurrences(of: "%@", with: provider)
@@ -27,7 +30,7 @@ internal enum SpeechToTextError: Error, LocalizedError {
         case .fileTooLarge:
             return LocalizedStrings.Errors.fileTooLarge
         case .noSpeechDetected:
-            return "No speech detected in the recording."
+            return LocalizedStrings.Errors.noSpeechDetected
         }
     }
 }
@@ -100,15 +103,8 @@ internal class SpeechToTextService {
     func transcribeRaw(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil)
         async throws -> String
     {
-        // Validate audio file before processing
-        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
-        switch validationResult {
-        case .valid(_): break
-        case .invalid(.silentAudio):
-            throw SpeechToTextError.noSpeechDetected
-        case .invalid(let error):
-            throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
-        }
+        try await validateAudioInput(audioURL)
+
         switch provider {
         case .openai:
             return try await transcribeWithOpenAI(audioURL: audioURL)
@@ -129,6 +125,8 @@ internal class SpeechToTextService {
     }
 
     func transcribe(audioURL: URL) async throws -> String {
+        try await validateAudioInput(audioURL)
+
         let useOpenAI = UserDefaults.standard.bool(forKey: "useOpenAI")
         if useOpenAI != false {  // Default to OpenAI if not set
             let text = try await transcribeWithOpenAI(audioURL: audioURL)
@@ -142,14 +140,7 @@ internal class SpeechToTextService {
     func transcribe(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws
         -> String
     {
-        // Validate audio file before processing
-        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
-        switch validationResult {
-        case .valid(_):
-            break  // Audio file validated successfully
-        case .invalid(let error):
-            throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
-        }
+        try await validateAudioInput(audioURL)
 
         switch provider {
         case .openai:
@@ -193,6 +184,18 @@ internal class SpeechToTextService {
         }
         // Remove trailing slash if present
         return custom.hasSuffix("/") ? String(custom.dropLast()) : custom
+    }
+
+    private func validateAudioInput(_ audioURL: URL) async throws {
+        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
+        switch validationResult {
+        case .valid:
+            return
+        case .invalid(.silentAudio):
+            throw SpeechToTextError.noSpeechDetected
+        case .invalid(let error):
+            throw SpeechToTextError.invalidAudio(error.localizedDescription)
+        }
     }
 
     /// Returns the full transcription endpoint URL for OpenAI-compatible APIs.
