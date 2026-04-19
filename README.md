@@ -120,13 +120,19 @@ export WHISP_TEAM_ID='your-team-id'
 
 ### GitHub Actions Release
 
-Every push to `master` runs the GitHub Actions `Release` workflow and publishes a notarized DMG release.
+Every push to `master` runs the GitHub Actions `Release` workflow.
 
 The automatic path defaults to a patch bump unless the checked-in `VERSION` file already leads the latest release tag. In that case, the workflow reuses the pending source version so a PR can intentionally ship a specific `x.y.z`.
 
 You can still run the workflow manually from `master` as a fallback. The manual path supports a `patch`, `minor`, or `major` bump, or an explicit `x.y.z` version.
 
-Before building and publishing the notarized DMG, the workflow commits any needed `VERSION` bump back to `master` so the released version exists in source.
+Before building and publishing artifacts, the workflow commits any needed `VERSION` bump back to `master` so the released version exists in source.
+
+If `DEVELOPER_ID_CERT_BASE64`, `DEVELOPER_ID_CERT_PASSWORD`, `APPLE_ID`, `APPLE_ID_PASSWORD`, and `APPLE_TEAM_ID` are configured as GitHub Actions secrets, the workflow publishes a notarized DMG plus checksum.
+
+If only the Developer ID certificate secrets are configured, the workflow publishes a Developer ID signed but unnotarized DMG, checksum, and app zip.
+
+If none of those secrets are configured, the workflow falls back to the historical ad-hoc release path and still publishes a DMG, checksum, and app zip. In the non-notarized fallback modes, first launch may require `Right-click > Open` or `xattr -cr /Applications/Whisp.app`.
 
 ### After Installing a New Build
 

@@ -51,8 +51,51 @@ jobs:
             exit 1
           fi
 
+      - name: Determine release packaging mode
+        id: release_mode
+        run: |
+          have_cert_secrets=false
+          have_notary_credentials=false
+
+          if [ -n "${DEVELOPER_ID_CERT_BASE64:-}" ] && [ -n "${DEVELOPER_ID_CERT_PASSWORD:-}" ]; then
+            have_cert_secrets=true
+          elif [ -n "${DEVELOPER_ID_CERT_BASE64:-}" ] || [ -n "${DEVELOPER_ID_CERT_PASSWORD:-}" ]; then
+            echo "::warning::Developer ID certificate secrets are only partially configured. Falling back to the unsigned release path."
+          fi
+
+          if [ -n "${WHISP_APPLE_ID:-}" ] && [ -n "${WHISP_APPLE_PASSWORD:-}" ] && [ -n "${WHISP_TEAM_ID:-}" ]; then
+            have_notary_credentials=true
+          elif [ -n "${WHISP_APPLE_ID:-}" ] || [ -n "${WHISP_APPLE_PASSWORD:-}" ] || [ -n "${WHISP_TEAM_ID:-}" ]; then
+            echo "::warning::Apple notarization secrets are only partially configured. Falling back to a non-notarized release."
+          fi
+
+          if [ "$have_cert_secrets" = true ] && [ "$have_notary_credentials" = true ]; then
+            mode=notarized
+            use_developer_id=true
+            include_zip=false
+            echo "✅ Release mode: notarized DMG"
+          elif [ "$have_cert_secrets" = true ]; then
+            mode=signed
+            use_developer_id=true
+            include_zip=true
+            echo "::warning::Apple notarization credentials are missing. Publishing a Developer ID signed but unnotarized release."
+          else
+            mode=adhoc
+            use_developer_id=false
+            include_zip=true
+            if [ "$have_notary_credentials" = true ]; then
+              echo "::warning::Apple notarization credentials are present, but the Developer ID certificate secrets are missing. Publishing an ad-hoc signed release instead."
+            else
+              echo "::warning::No Apple release credentials are configured. Publishing an ad-hoc signed release."
+            fi
+          fi
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "use_developer_id=$use_developer_id" >> "$GITHUB_OUTPUT"
+          echo "include_zip=$include_zip" >> "$GITHUB_OUTPUT"
+
       - name: Import Developer ID certificate
-        if: ${{ env.DEVELOPER_ID_CERT_BASE64 != '' }}
+        if: ${{ steps.release_mode.outputs.use_developer_id == 'true' }}
         run: |
           CERT_PATH="$RUNNER_TEMP/dev-id-cert.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
@@ -209,6 +252,7 @@ jobs:
         run: swift test
 
       - name: Require Developer ID certificate
+        if: ${{ steps.release_mode.outputs.use_developer_id == 'true' }}
         run: |
           if [ -z "${SIGNING_IDENTITY:-}" ]; then
             echo "❌ Release workflow requires a Developer ID Application certificate"
@@ -217,16 +261,43 @@ jobs:
           fi
           echo "✅ Using Developer ID certificate: $SIGNING_IDENTITY"
 
-      - name: Build notarized app bundles
+      - name: Build release app bundles
         run: |
-          WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
-          CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-          ./scripts/build.sh --notarize
+          case "${{ steps.release_mode.outputs.mode }}" in
+            notarized)
+              WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
+              CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+              ./scripts/build.sh --notarize
+              ;;
+            signed)
+              WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
+              CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+              ./scripts/build.sh
+              ;;
+            adhoc)
+              WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
+              ./scripts/build.sh
+              ;;
+            *)
+              echo "❌ Unknown release mode: ${{ steps.release_mode.outputs.mode }}"
+              exit 1
+              ;;
+          esac
 
-      - name: Create notarized DMG
+      - name: Create release DMG
         run: |
-          WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
-          ./scripts/create-dmg.sh --notarize
+          if [ "${{ steps.release_mode.outputs.mode }}" = "notarized" ]; then
+            WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
+            ./scripts/create-dmg.sh --notarize
+          else
+            WHISP_VERSION="${{ steps.release_version.outputs.version }}" \
+            ./scripts/create-dmg.sh
+          fi
+
+      - name: Create fallback app zip
+        if: ${{ steps.release_mode.outputs.include_zip == 'true' }}
+        run: |
+          ditto -c -k --keepParent "Whisp.app" "Whisp-${{ steps.release_version.outputs.version }}.zip"
 
       - name: Create checksum
         run: |
@@ -287,17 +358,59 @@ jobs:
             git push origin "$TAG"
           fi
 
-          cat > /tmp/release-notes.md <<'NOTES'
+           cat > /tmp/release-notes.md <<'NOTES'
           ## Installation
 
           1. Download the `.dmg` file below and drag **Whisp.app** into `/Applications/`.
           2. The DMG also includes **Uninstall Whisp.app** if you want a full cleanup later.
-          3. Open Whisp from `/Applications/`. On first launch, grant the requested permissions:
+
+          NOTES
+
+           case "${{ steps.release_mode.outputs.mode }}" in
+            notarized)
+              cat >> /tmp/release-notes.md <<'NOTES'
+           3. Open Whisp from `/Applications/`. On first launch, grant the requested permissions:
              - **Microphone** — for voice recording
              - **Accessibility** — for Smart Paste
              - **Input Monitoring** — for the global hotkey
 
-          NOTES
+           NOTES
+              ;;
+            signed)
+              cat >> /tmp/release-notes.md <<'NOTES'
+           3. This build is signed with a Developer ID certificate but is not notarized. If macOS blocks it on first launch, run this once:
+             ```bash
+             sudo xattr -cr /Applications/Whisp.app
+             ```
+           4. Open Whisp from `/Applications/`. On first launch, grant the requested permissions:
+             - **Microphone** — for voice recording
+             - **Accessibility** — for Smart Paste
+             - **Input Monitoring** — for the global hotkey
+
+           > You only need to run the `xattr` command once per download. Permissions persist across app restarts.
+
+           NOTES
+              ;;
+            adhoc)
+              cat >> /tmp/release-notes.md <<'NOTES'
+           3. Whisp is open-source and this build is not notarized. If macOS blocks it on first launch, run this once:
+             ```bash
+             sudo xattr -cr /Applications/Whisp.app
+             ```
+           4. Open Whisp from `/Applications/`. On first launch, grant the requested permissions:
+             - **Microphone** — for voice recording
+             - **Accessibility** — for Smart Paste
+             - **Input Monitoring** — for the global hotkey
+
+           > You only need to run the `xattr` command once per download. Permissions persist across app restarts.
+
+           NOTES
+              ;;
+            *)
+              echo "❌ Unknown release mode: ${{ steps.release_mode.outputs.mode }}"
+              exit 1
+              ;;
+           esac
 
           # Append auto-generated changelog
           PREV_TAG="$(git tag --sort=-v:refname | grep -v "^$TAG$" | head -1 || true)"
@@ -308,9 +421,17 @@ jobs:
               >> /tmp/release-notes.md 2>/dev/null || true
           fi
 
+          release_assets=(
+            "Whisp-${{ steps.release_version.outputs.version }}.dmg"
+            "Whisp-${{ steps.release_version.outputs.version }}.dmg.sha256"
+          )
+
+          if [ "${{ steps.release_mode.outputs.include_zip }}" = "true" ]; then
+            release_assets+=("Whisp-${{ steps.release_version.outputs.version }}.zip")
+          fi
+
           gh release create "$TAG" \
-            "Whisp-${{ steps.release_version.outputs.version }}.dmg" \
-            "Whisp-${{ steps.release_version.outputs.version }}.dmg.sha256" \
+            "${release_assets[@]}" \
             --verify-tag \
             --target "${{ steps.commit_release_version.outputs.commit_sha }}" \
             --title "Whisp ${{ steps.release_version.outputs.version }}" \
