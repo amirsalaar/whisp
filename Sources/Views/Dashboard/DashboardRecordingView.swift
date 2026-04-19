@@ -26,11 +26,12 @@ internal struct DashboardRecordingView: View {
     @AppStorage(AppDefaults.Keys.pressAndHoldModifierFailureMessage) private
         var pressAndHoldModifierFailureMessage = ""
 
-    @State private var availableMicrophones: [AVCaptureDevice] = []
+    @State private var availableMicrophones: [MicrophoneInputDeviceInfo] = []
     @State private var previousPressAndHoldKeyIdentifier = PressAndHoldConfiguration.defaults.key.rawValue
     @State private var showFnWarningConfirmation = false
 
     private let inputMonitoringPermissionManager = InputMonitoringPermissionManager()
+    private let microphoneVolumeManager = MicrophoneVolumeManager.shared
 
     var body: some View {
         Form {
@@ -41,14 +42,14 @@ internal struct DashboardRecordingView: View {
                 } else {
                     Picker("Input Device", selection: $selectedMicrophone) {
                         Text("System Default").tag("")
-                        ForEach(availableMicrophones, id: \.uniqueID) { device in
-                            Text(device.localizedName).tag(device.uniqueID)
+                        ForEach(availableMicrophones, id: \.uid) { device in
+                            Text(device.name).tag(device.uid)
                         }
                     }
                     .pickerStyle(.menu)
 
                     Text(
-                        "Whisp currently records from macOS's active default input device. This menu stores a device reference for troubleshooting only."
+                        "Leave this on System Default to follow macOS. Choose a microphone here to force Whisp to record from that device."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -296,12 +297,7 @@ internal struct DashboardRecordingView: View {
     }
 
     private func loadMicrophones() {
-        let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        availableMicrophones = discoverySession.devices
+        availableMicrophones = microphoneVolumeManager.availableInputDevices()
     }
 
     private func publishPressAndHoldConfiguration() {

@@ -15,14 +15,18 @@ internal class AudioRecorder: NSObject, ObservableObject {
     @Published var hasPermission = false
 
     private var audioRecorder: AVAudioRecorder?
+    private var inputDeviceRecordingSession: (any InputDeviceRecordingSession)?
     private var recordingURL: URL?
     private var levelUpdateTimer: Timer?
     private let volumeManager: MicrophoneVolumeManager
     private let recorderFactory: (URL, [String: Any]) throws -> AVAudioRecorder
+    private let inputDeviceSessionFactory:
+        (MicrophoneInputDeviceInfo, URL) throws -> any InputDeviceRecordingSession
     private let dateProvider: () -> Date
     private let authorizationStatusProvider: () -> AVAuthorizationStatus
     private let permissionRequester: (@escaping @Sendable (Bool) -> Void) -> Void
-    private let defaultInputDeviceProvider: @Sendable () async -> MicrophoneVolumeManager.InputDeviceInfo?
+    private let selectedInputDeviceResolver: (String) -> MicrophoneInputDeviceInfo?
+    private let defaultInputDeviceProvider: @Sendable () async -> MicrophoneInputDeviceInfo?
     private let diagnosticsLogger: @Sendable (String) -> Void
     private var stopRecordingContinuation: CheckedContinuation<StopRecordingResult, Never>?
     private var stopRecordingTask: Task<URL?, Never>?
@@ -31,16 +35,18 @@ internal class AudioRecorder: NSObject, ObservableObject {
     private(set) var currentSessionStart: Date?
     private(set) var lastRecordingDuration: TimeInterval?
 
-    // Debouncing to prevent rapid recording starts
     private var lastRecordingAttempt: Date?
-    private let debounceInterval: TimeInterval = 0.2  // 200ms debounce window
+    private let debounceInterval: TimeInterval = 0.2
 
     override init() {
-        self.volumeManager = MicrophoneVolumeManager.shared
-        self.recorderFactory = { url, settings in try AVAudioRecorder(url: url, settings: settings) }
-        self.dateProvider = { Date() }
-        self.authorizationStatusProvider = { AVCaptureDevice.authorizationStatus(for: .audio) }
-        self.permissionRequester = { completion in
+        volumeManager = MicrophoneVolumeManager.shared
+        recorderFactory = { url, settings in try AVAudioRecorder(url: url, settings: settings) }
+        inputDeviceSessionFactory = { device, url in
+            AudioEngineInputDeviceRecordingSession(inputDevice: device, outputURL: url)
+        }
+        dateProvider = { Date() }
+        authorizationStatusProvider = { AVCaptureDevice.authorizationStatus(for: .audio) }
+        permissionRequester = { completion in
             guard !AppEnvironment.isRunningTests else {
                 completion(false)
                 return
@@ -48,10 +54,13 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
             AVCaptureDevice.requestAccess(for: .audio, completionHandler: completion)
         }
-        self.defaultInputDeviceProvider = {
+        selectedInputDeviceResolver = { selection in
+            MicrophoneVolumeManager.shared.inputDeviceInfo(forSelection: selection)
+        }
+        defaultInputDeviceProvider = {
             await MicrophoneVolumeManager.shared.currentDefaultInputDeviceInfoOrNil()
         }
-        self.diagnosticsLogger = { message in
+        diagnosticsLogger = { message in
             Logger.audioRecorder.info("\(message, privacy: .public)")
         }
         super.init()
@@ -62,6 +71,11 @@ internal class AudioRecorder: NSObject, ObservableObject {
     init(
         volumeManager: MicrophoneVolumeManager = .shared,
         recorderFactory: @escaping (URL, [String: Any]) throws -> AVAudioRecorder,
+        inputDeviceSessionFactory:
+            @escaping (MicrophoneInputDeviceInfo, URL) throws -> any InputDeviceRecordingSession =
+            { device, url in
+                AudioEngineInputDeviceRecordingSession(inputDevice: device, outputURL: url)
+            },
         dateProvider: @escaping () -> Date = { Date() },
         authorizationStatusProvider: @escaping () -> AVAuthorizationStatus = {
             AVCaptureDevice.authorizationStatus(for: .audio)
@@ -74,7 +88,10 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
             AVCaptureDevice.requestAccess(for: .audio, completionHandler: completion)
         },
-        defaultInputDeviceProvider: @escaping @Sendable () async -> MicrophoneVolumeManager.InputDeviceInfo? =
+        selectedInputDeviceResolver: @escaping (String) -> MicrophoneInputDeviceInfo? = { selection in
+            MicrophoneVolumeManager.shared.inputDeviceInfo(forSelection: selection)
+        },
+        defaultInputDeviceProvider: @escaping @Sendable () async -> MicrophoneInputDeviceInfo? =
             {
                 await MicrophoneVolumeManager.shared.currentDefaultInputDeviceInfoOrNil()
             },
@@ -84,9 +101,11 @@ internal class AudioRecorder: NSObject, ObservableObject {
     ) {
         self.volumeManager = volumeManager
         self.recorderFactory = recorderFactory
+        self.inputDeviceSessionFactory = inputDeviceSessionFactory
         self.dateProvider = dateProvider
         self.authorizationStatusProvider = authorizationStatusProvider
         self.permissionRequester = permissionRequester
+        self.selectedInputDeviceResolver = selectedInputDeviceResolver
         self.defaultInputDeviceProvider = defaultInputDeviceProvider
         self.diagnosticsLogger = diagnosticsLogger
         super.init()
@@ -103,11 +122,11 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
         switch permissionStatus {
         case .authorized:
-            self.hasPermission = true
+            hasPermission = true
         case .denied, .restricted, .notDetermined:
-            self.hasPermission = false
+            hasPermission = false
         @unknown default:
-            self.hasPermission = false
+            hasPermission = false
         }
     }
 
@@ -120,7 +139,6 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
 
     func startRecording() async -> Bool {
-        // Debounce rapid recording attempts
         let now = dateProvider()
         if let last = lastRecordingAttempt, now.timeIntervalSince(last) < debounceInterval {
             Logger.audioRecorder.debug("Recording attempt debounced (too soon after last attempt)")
@@ -128,28 +146,70 @@ internal class AudioRecorder: NSObject, ObservableObject {
         }
         lastRecordingAttempt = now
 
-        // Check permission on demand instead of prompting during app launch.
         guard await ensureMicrophonePermission() else {
             return false
         }
 
-        // Prevent re-entrancy - if already recording, return false
-        guard audioRecorder == nil else {
+        guard audioRecorder == nil, inputDeviceRecordingSession == nil else {
             return false
         }
 
-        await logRecordingInputDiagnostics()
+        let selectedMicrophoneID =
+            UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedMicrophone)
+            ?? ""
+        let selectedInputDevice = selectedInputDeviceResolver(selectedMicrophoneID)
 
-        // Boost microphone volume if enabled (await to ensure it completes before recording)
+        await logRecordingInputDiagnostics(
+            selectedMicrophoneID: selectedMicrophoneID,
+            selectedInputDevice: selectedInputDevice
+        )
+
         if UserDefaults.standard.autoBoostMicrophoneVolume {
-            _ = await volumeManager.boostMicrophoneVolume()
+            _ = await volumeManager.boostMicrophoneVolume(deviceUID: selectedInputDevice?.uid)
         }
 
         let tempPath = FileManager.default.temporaryDirectory
         let timestamp = dateProvider().timeIntervalSince1970
-        let audioFilename = tempPath.appendingPathComponent("recording_\(timestamp).m4a")
+        let fileExtension = selectedInputDevice == nil ? "m4a" : "caf"
+        let audioFilename = tempPath.appendingPathComponent(
+            "recording_\(timestamp).\(fileExtension)"
+        )
 
         recordingURL = audioFilename
+
+        if let selectedInputDevice {
+            do {
+                let inputSession = try inputDeviceSessionFactory(selectedInputDevice, audioFilename)
+                let sessionIdentifier = ObjectIdentifier(inputSession)
+                inputSession.finishHandler = { [weak self] success in
+                    Task { @MainActor [weak self] in
+                        self?.handleInputDeviceSessionFinished(
+                            sessionIdentifier: sessionIdentifier,
+                            success: success
+                        )
+                    }
+                }
+                try inputSession.start()
+                inputDeviceRecordingSession = inputSession
+
+                currentSessionStart = dateProvider()
+                lastRecordingDuration = nil
+                isRecording = true
+                startLevelMonitoring()
+                return true
+            } catch {
+                Logger.audioRecorder.error(
+                    "Failed to start selected-input recording: \(error.localizedDescription)"
+                )
+                inputDeviceRecordingSession = nil
+                recordingURL = nil
+                if UserDefaults.standard.autoBoostMicrophoneVolume {
+                    _ = await volumeManager.restoreMicrophoneVolume()
+                }
+                checkMicrophonePermission()
+                return false
+            }
+        }
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -157,10 +217,6 @@ internal class AudioRecorder: NSObject, ObservableObject {
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
-
-        // Note: On macOS, microphone selection is handled at the system level
-        // The AVAudioRecorder will use the system's default input device
-        // Users can change this in System Preferences > Sound > Input
 
         do {
             audioRecorder = try recorderFactory(audioFilename, settings)
@@ -182,60 +238,55 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
             currentSessionStart = dateProvider()
             lastRecordingDuration = nil
-
-            self.isRecording = true
-            self.startLevelMonitoring()
+            isRecording = true
+            startLevelMonitoring()
             return true
         } catch {
             Logger.audioRecorder.error("Failed to start recording: \(error.localizedDescription)")
             audioRecorder = nil
             recordingURL = nil
-            // Restore volume if recording failed and we boosted it
             if UserDefaults.standard.autoBoostMicrophoneVolume {
                 _ = await volumeManager.restoreMicrophoneVolume()
             }
-            // Recheck permissions if recording failed
             checkMicrophonePermission()
             return false
         }
     }
 
-    private func logRecordingInputDiagnostics() async {
-        let selectedMicrophoneID =
-            UserDefaults.standard.string(forKey: AppDefaults.Keys.selectedMicrophone)
-            ?? ""
-        let selectedMicrophoneDescription = Self.selectedMicrophoneDescription(for: selectedMicrophoneID)
+    private func logRecordingInputDiagnostics(
+        selectedMicrophoneID: String,
+        selectedInputDevice: MicrophoneInputDeviceInfo?
+    ) async {
+        let selectedMicrophoneDescription: String
+        if let selectedInputDevice {
+            selectedMicrophoneDescription = "\(selectedInputDevice.name) [\(selectedInputDevice.uid)]"
+        } else {
+            selectedMicrophoneDescription = volumeManager.inputDeviceDescription(
+                forSelection: selectedMicrophoneID
+            )
+        }
+
+        let routeDescription: String
+        if let selectedInputDevice {
+            routeDescription =
+                "Whisp will record from the selected input device name=\(selectedInputDevice.name), uid=\(selectedInputDevice.uid)."
+        } else if selectedMicrophoneID.isEmpty {
+            routeDescription = "Whisp will record from the system default input."
+        } else {
+            routeDescription =
+                "Selected input unavailable, falling back to the system default input."
+        }
 
         if let defaultInputDevice = await defaultInputDeviceProvider() {
-            let name = defaultInputDevice.name ?? "Unknown"
-            let uid = defaultInputDevice.uid ?? "Unknown"
             diagnosticsLogger(
-                "Recording start input diagnostics: system default input name=\(name), id=\(defaultInputDevice.deviceID), uid=\(uid), dashboard selection=\(selectedMicrophoneDescription). Whisp currently records from the system default input."
+                "Recording start input diagnostics: system default input name=\(defaultInputDevice.name), id=\(defaultInputDevice.deviceID), uid=\(defaultInputDevice.uid), dashboard selection=\(selectedMicrophoneDescription). \(routeDescription)"
             )
             return
         }
 
         diagnosticsLogger(
-            "Recording start input diagnostics: system default input unavailable, dashboard selection=\(selectedMicrophoneDescription). Whisp currently records from the system default input."
+            "Recording start input diagnostics: system default input unavailable, dashboard selection=\(selectedMicrophoneDescription). \(routeDescription)"
         )
-    }
-
-    private static func selectedMicrophoneDescription(for uniqueID: String) -> String {
-        guard !uniqueID.isEmpty else {
-            return "System Default"
-        }
-
-        let devices = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone],
-            mediaType: .audio,
-            position: .unspecified
-        ).devices
-
-        if let device = devices.first(where: { $0.uniqueID == uniqueID }) {
-            return "\(device.localizedName) [\(uniqueID)]"
-        }
-
-        return "Stored selection [\(uniqueID)]"
     }
 
     private func ensureMicrophonePermission() async -> Bool {
@@ -263,6 +314,51 @@ internal class AudioRecorder: NSObject, ObservableObject {
     func stopRecording() async -> URL? {
         if let stopRecordingTask {
             return await stopRecordingTask.value
+        }
+
+        if let inputSession = inputDeviceRecordingSession {
+            let stopTask = Task { @MainActor [weak self] () -> URL? in
+                guard let self else { return nil }
+
+                defer {
+                    stopRecordingTask = nil
+                }
+
+                let now = dateProvider()
+                let sessionDuration = currentSessionStart.map { now.timeIntervalSince($0) }
+                lastRecordingDuration = sessionDuration
+                currentSessionStart = nil
+                let finalRecordingURL = recordingURL
+
+                let stopResult = await waitForInputDeviceSessionToFinish(inputSession)
+                if stopResult == .finishedWithFailure {
+                    Logger.audioRecorder.error(
+                        "Selected-input recording failed during finalization"
+                    )
+                }
+
+                inputDeviceRecordingSession = nil
+
+                if UserDefaults.standard.autoBoostMicrophoneVolume {
+                    _ = await volumeManager.restoreMicrophoneVolume()
+                }
+
+                isRecording = false
+                stopLevelMonitoring()
+
+                if stopResult == .finishedWithFailure {
+                    if let finalRecordingURL {
+                        try? FileManager.default.removeItem(at: finalRecordingURL)
+                    }
+                    recordingURL = nil
+                    return nil
+                }
+
+                return finalRecordingURL
+            }
+
+            stopRecordingTask = stopTask
+            return await stopTask.value
         }
 
         guard let recorder = audioRecorder else {
@@ -316,6 +412,22 @@ internal class AudioRecorder: NSObject, ObservableObject {
     /// utterance can be truncated when the file is handed to the transcriber.
     static let postStopFlushDelay: UInt64 = 150_000_000  // 150 ms
 
+    private func waitForInputDeviceSessionToFinish(
+        _ inputSession: any InputDeviceRecordingSession
+    ) async -> StopRecordingResult {
+        if !inputSession.isRecording {
+            return .finishedSuccessfully
+        }
+
+        let sessionIdentifier = ObjectIdentifier(inputSession)
+
+        return await withCheckedContinuation { continuation in
+            stoppingRecorderIdentifier = sessionIdentifier
+            stopRecordingContinuation = continuation
+            inputSession.stop()
+        }
+    }
+
     private func waitForRecordingToFinish(_ recorder: AVAudioRecorder) async -> StopRecordingResult {
         if !recorder.isRecording {
             return .finishedSuccessfully
@@ -350,7 +462,6 @@ internal class AudioRecorder: NSObject, ObservableObject {
     func cleanupRecording() {
         guard let url = recordingURL else { return }
 
-        // Restore microphone volume if it was boosted (in case of cancellation/cleanup)
         if UserDefaults.standard.autoBoostMicrophoneVolume {
             Task {
                 await volumeManager.restoreMicrophoneVolume()
@@ -370,6 +481,12 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
 
     func cancelRecording() {
+        let inputSessionToCancel = inputDeviceRecordingSession
+        if let inputSessionToCancel {
+            cancelledRecorderIdentifier = ObjectIdentifier(inputSessionToCancel)
+            inputSessionToCancel.cancel()
+        }
+
         let recorderToCancel = audioRecorder
         if let recorderToCancel {
             cancelledRecorderIdentifier = ObjectIdentifier(recorderToCancel)
@@ -377,35 +494,38 @@ internal class AudioRecorder: NSObject, ObservableObject {
         }
 
         audioRecorder = nil
+        inputDeviceRecordingSession = nil
         currentSessionStart = nil
         lastRecordingDuration = nil
 
-        // Restore microphone volume if it was boosted
         if UserDefaults.standard.autoBoostMicrophoneVolume {
             Task {
                 await volumeManager.restoreMicrophoneVolume()
             }
         }
 
-        // Update @Published properties on main thread
-        self.isRecording = false
-        self.stopLevelMonitoring()
+        isRecording = false
+        stopLevelMonitoring()
 
-        if recorderToCancel == nil {
+        if recorderToCancel == nil, inputSessionToCancel == nil {
             cleanupRecording()
         }
     }
 
     private func startLevelMonitoring() {
-        // Use a more efficient approach for macOS
         levelUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self, let recorder = self.audioRecorder else { return }
+                guard let self else { return }
 
-                recorder.updateMeters()
-                let normalizedLevel = self.normalizeLevel(recorder.averagePower(forChannel: 0))
+                if let recorder = self.audioRecorder {
+                    recorder.updateMeters()
+                    self.audioLevel = self.normalizeLevel(recorder.averagePower(forChannel: 0))
+                    return
+                }
 
-                self.audioLevel = normalizedLevel
+                if let inputSession = self.inputDeviceRecordingSession {
+                    self.audioLevel = self.normalizeLevel(inputSession.averagePower)
+                }
             }
         }
     }
@@ -417,12 +537,46 @@ internal class AudioRecorder: NSObject, ObservableObject {
     }
 
     private func normalizeLevel(_ level: Float) -> Float {
-        // Convert dB to linear scale (0.0 to 1.0)
         let minDb: Float = -60.0
         let maxDb: Float = 0.0
 
         let clampedLevel = max(minDb, min(maxDb, level))
         return (clampedLevel - minDb) / (maxDb - minDb)
+    }
+
+    private func handleInputDeviceSessionFinished(
+        sessionIdentifier: ObjectIdentifier,
+        success: Bool
+    ) {
+        if cancelledRecorderIdentifier == sessionIdentifier {
+            cancelledRecorderIdentifier = nil
+            cleanupRecording()
+            resolveStopRecordingContinuation(
+                result: .finishedWithFailure,
+                expectedRecorderIdentifier: sessionIdentifier
+            )
+            return
+        }
+
+        if stopRecordingContinuation == nil || stoppingRecorderIdentifier != sessionIdentifier {
+            if let activeSession = inputDeviceRecordingSession,
+                ObjectIdentifier(activeSession) == sessionIdentifier
+            {
+                inputDeviceRecordingSession = nil
+            }
+            isRecording = false
+            stopLevelMonitoring()
+
+            if !success {
+                cleanupRecording()
+            }
+            return
+        }
+
+        resolveStopRecordingContinuation(
+            result: success ? .finishedSuccessfully : .finishedWithFailure,
+            expectedRecorderIdentifier: sessionIdentifier
+        )
     }
 }
 
