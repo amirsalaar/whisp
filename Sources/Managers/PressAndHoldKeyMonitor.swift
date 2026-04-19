@@ -330,6 +330,10 @@ internal final class PressAndHoldKeyMonitor {
     private var stuckStateTimeoutTask: Task<Void, Never>?
     private let stuckStateTimeout: TimeInterval = 120.0
 
+    // Periodic tap health check — re-enables the tap if macOS silently disabled it
+    private var tapHealthTimer: DispatchSourceTimer?
+    private let tapHealthInterval: TimeInterval = 5.0
+
     init(
         configuration: PressAndHoldConfiguration,
         keyDownHandler: @escaping () -> Void,
@@ -392,6 +396,7 @@ internal final class PressAndHoldKeyMonitor {
         }
 
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        startTapHealthCheck()
 
         if !hasVerifiedCapture {
             readinessHandler(
@@ -406,6 +411,7 @@ internal final class PressAndHoldKeyMonitor {
     func stop() {
         resetPendingState()
         endCaptureIfNeeded()
+        stopTapHealthCheck()
         removeEventTap()
         cancelStuckStateRecovery()
     }
@@ -475,9 +481,10 @@ internal final class PressAndHoldKeyMonitor {
             return
         }
 
-        // Our key changed state. A flagsChanged event with our keyCode means
-        // this physical key toggled. Determine direction from tracked state.
-        let isPressed = !isKeyCurrentlyDown
+        // Determine direction from the actual modifier flags rather than
+        // toggling internal state — if the event tap silently drops events the
+        // tracked state can get inverted and stay broken.
+        let isPressed = flags.contains(monitoredKey.cgEventFlagsMask)
         processSemanticEvent(.modifierKeyChanged(isPressed: isPressed))
     }
 
@@ -532,6 +539,26 @@ internal final class PressAndHoldKeyMonitor {
         Task { @MainActor [keyDownHandler] in
             keyDownHandler()
         }
+    }
+
+    private func startTapHealthCheck() {
+        stopTapHealthCheck()
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + tapHealthInterval, repeating: tapHealthInterval)
+        timer.setEventHandler { [weak self] in
+            guard let self, let tap = self.eventTap else { return }
+            if !CGEvent.tapIsEnabled(tap: tap) {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+        }
+        tapHealthTimer = timer
+        timer.resume()
+    }
+
+    private func stopTapHealthCheck() {
+        tapHealthTimer?.cancel()
+        tapHealthTimer = nil
     }
 
     private func removeEventTap() {
