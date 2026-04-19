@@ -254,6 +254,11 @@ internal class AudioRecorder: NSObject, ObservableObject {
         return await stopTask.value
     }
 
+    /// Time to wait after the recorder finishes so the AAC encoder can flush
+    /// its remaining frames to disk. Without this pause the tail of the
+    /// utterance can be truncated when the file is handed to the transcriber.
+    static let postStopFlushDelay: UInt64 = 150_000_000  // 150 ms
+
     private func waitForRecordingToFinish(_ recorder: AVAudioRecorder) async -> StopRecordingResult {
         if !recorder.isRecording {
             return .finishedSuccessfully
@@ -261,11 +266,16 @@ internal class AudioRecorder: NSObject, ObservableObject {
 
         let recorderIdentifier = ObjectIdentifier(recorder)
 
-        return await withCheckedContinuation { continuation in
+        let result = await withCheckedContinuation { continuation in
             stoppingRecorderIdentifier = recorderIdentifier
             stopRecordingContinuation = continuation
             recorder.stop()
         }
+
+        // Give the AAC encoder time to flush buffered frames to the output file.
+        try? await Task.sleep(nanoseconds: Self.postStopFlushDelay)
+
+        return result
     }
 
     private func resolveStopRecordingContinuation(

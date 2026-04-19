@@ -409,6 +409,41 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertNil(subsequentStopURL)
     }
 
+    func testPostStopFlushDelayIsPositive() {
+        // The flush delay prevents the AAC encoder from truncating the tail of
+        // the utterance. Verify the constant is set to a meaningful value.
+        XCTAssertGreaterThan(
+            AudioRecorder.postStopFlushDelay, 0,
+            "postStopFlushDelay must be > 0 so the encoder can flush"
+        )
+    }
+
+    func testStopRecordingTakesAtLeastFlushDelay() async {
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 10_000),
+                Date(timeIntervalSince1970: 10_001),
+                Date(timeIntervalSince1970: 10_002),
+                Date(timeIntervalSince1970: 10_005),
+            ],
+            recorderFactory: { _, _ in MockAVAudioRecorder() }
+        )
+        recorder.hasPermission = true
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        let before = CFAbsoluteTimeGetCurrent()
+        let url = await recorder.stopRecording()
+        let elapsed = CFAbsoluteTimeGetCurrent() - before
+
+        XCTAssertNotNil(url)
+        let expectedMinimum = Double(AudioRecorder.postStopFlushDelay) / 1_000_000_000
+        XCTAssertGreaterThanOrEqual(
+            elapsed, expectedMinimum * 0.8,  // allow small scheduling jitter
+            "stopRecording should wait at least ~\(Int(expectedMinimum * 1000))ms for encoder flush"
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeRecorder(
