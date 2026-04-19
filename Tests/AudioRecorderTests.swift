@@ -151,8 +151,18 @@ final class AudioRecorderTests: XCTestCase {
                 Date(timeIntervalSince1970: 2_100), Date(timeIntervalSince1970: 2_101),
                 Date(timeIntervalSince1970: 2_102),
             ],
+            selectedInputDeviceResolver: { selection in
+                if selection == "external-mic-123" {
+                    return MicrophoneInputDeviceInfo(
+                        deviceID: 88,
+                        uid: "external-mic-uid",
+                        name: "USB Microphone"
+                    )
+                }
+                return nil
+            },
             defaultInputDeviceProvider: {
-                MicrophoneVolumeManager.InputDeviceInfo(
+                MicrophoneInputDeviceInfo(
                     deviceID: 42,
                     uid: "built-in-mic-uid",
                     name: "MacBook Pro Microphone"
@@ -174,9 +184,9 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertTrue(diagnosticsMessages[0].contains("id=42"))
         XCTAssertTrue(diagnosticsMessages[0].contains("uid=built-in-mic-uid"))
         XCTAssertTrue(
-            diagnosticsMessages[0].contains("dashboard selection=Stored selection [external-mic-123]"))
+            diagnosticsMessages[0].contains("dashboard selection=USB Microphone [external-mic-uid]"))
         XCTAssertTrue(
-            diagnosticsMessages[0].contains("Whisp currently records from the system default input."))
+            diagnosticsMessages[0].contains("Whisp will record from the selected input device"))
     }
 
     func testStartRecordingLogsWhenDefaultInputInspectionFails() async {
@@ -204,7 +214,88 @@ final class AudioRecorderTests: XCTestCase {
         XCTAssertTrue(diagnosticsMessages[0].contains("system default input unavailable"))
         XCTAssertTrue(diagnosticsMessages[0].contains("dashboard selection=System Default"))
         XCTAssertTrue(
-            diagnosticsMessages[0].contains("Whisp currently records from the system default input."))
+            diagnosticsMessages[0].contains("Whisp will record from the system default input."))
+    }
+
+    func testStartRecordingUsesSelectedInputDeviceSession() async {
+        UserDefaults.standard.set("usb-mic-uid", forKey: AppDefaults.Keys.selectedMicrophone)
+
+        let inputSession = MockInputDeviceRecordingSession()
+        var resolvedInputDevice: MicrophoneInputDeviceInfo?
+        var sessionURL: URL?
+
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 2_300), Date(timeIntervalSince1970: 2_301),
+                Date(timeIntervalSince1970: 2_302),
+            ],
+            inputDeviceSessionFactory: { device, url in
+                resolvedInputDevice = device
+                sessionURL = url
+                return inputSession
+            },
+            selectedInputDeviceResolver: { selection in
+                if selection == "usb-mic-uid" {
+                    return MicrophoneInputDeviceInfo(
+                        deviceID: 314,
+                        uid: "usb-mic-uid",
+                        name: "USB Microphone"
+                    )
+                }
+                return nil
+            },
+            recorderFactory: { _, _ in
+                XCTFail("AVAudioRecorder path should not be used for an explicit microphone selection")
+                return MockAVAudioRecorder()
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(resolvedInputDevice?.uid, "usb-mic-uid")
+        XCTAssertEqual(resolvedInputDevice?.name, "USB Microphone")
+        XCTAssertEqual(sessionURL?.pathExtension, "caf")
+        XCTAssertTrue(inputSession.didStart)
+        XCTAssertTrue(recorder.isRecording)
+    }
+
+    func testStopRecordingFinishesSelectedInputDeviceSession() async {
+        UserDefaults.standard.set("usb-mic-uid", forKey: AppDefaults.Keys.selectedMicrophone)
+
+        let inputSession = MockInputDeviceRecordingSession()
+        let recorder = makeRecorder(
+            dates: [
+                Date(timeIntervalSince1970: 2_400), Date(timeIntervalSince1970: 2_401),
+                Date(timeIntervalSince1970: 2_402), Date(timeIntervalSince1970: 2_405),
+            ],
+            inputDeviceSessionFactory: { _, _ in inputSession },
+            selectedInputDeviceResolver: { selection in
+                if selection == "usb-mic-uid" {
+                    return MicrophoneInputDeviceInfo(
+                        deviceID: 271,
+                        uid: "usb-mic-uid",
+                        name: "USB Microphone"
+                    )
+                }
+                return nil
+            },
+            recorderFactory: { _, _ in
+                XCTFail("AVAudioRecorder path should not be used for an explicit microphone selection")
+                return MockAVAudioRecorder()
+            }
+        )
+        recorder.hasPermission = true
+
+        let didStart = await recorder.startRecording()
+        XCTAssertTrue(didStart)
+
+        let url = await recorder.stopRecording()
+
+        XCTAssertNotNil(url)
+        XCTAssertTrue(inputSession.didStop)
+        XCTAssertFalse(recorder.isRecording)
     }
 
     func testStopRecordingSetsDurationAndResetsState() async {
@@ -483,7 +574,15 @@ final class AudioRecorderTests: XCTestCase {
         permissionRequester: @escaping (@escaping (Bool) -> Void) -> Void = { completion in
             completion(true)
         },
-        defaultInputDeviceProvider: @escaping @Sendable () async -> MicrophoneVolumeManager.InputDeviceInfo? =
+        inputDeviceSessionFactory:
+            @escaping (MicrophoneInputDeviceInfo, URL) throws -> any InputDeviceRecordingSession =
+            { _, _ in
+                MockInputDeviceRecordingSession()
+            },
+        selectedInputDeviceResolver: @escaping (String) -> MicrophoneInputDeviceInfo? = { _ in
+            nil
+        },
+        defaultInputDeviceProvider: @escaping @Sendable () async -> MicrophoneInputDeviceInfo? =
             {
                 nil
             },
@@ -493,9 +592,11 @@ final class AudioRecorderTests: XCTestCase {
         let dateProvider = StubDateProvider(dates: dates)
         return AudioRecorder(
             recorderFactory: recorderFactory,
+            inputDeviceSessionFactory: inputDeviceSessionFactory,
             dateProvider: { dateProvider.nextDate() },
             authorizationStatusProvider: authorizationStatusProvider,
             permissionRequester: permissionRequester,
+            selectedInputDeviceResolver: selectedInputDeviceResolver,
             defaultInputDeviceProvider: defaultInputDeviceProvider,
             diagnosticsLogger: diagnosticsLogger
         )
@@ -557,5 +658,31 @@ private final class DiagnosticsSink: @unchecked Sendable {
         lock.lock()
         storedMessages.append(message)
         lock.unlock()
+    }
+}
+
+private final class MockInputDeviceRecordingSession: InputDeviceRecordingSession {
+    var finishHandler: ((Bool) -> Void)?
+    private(set) var isRecording = false
+    private(set) var didStart = false
+    private(set) var didStop = false
+    private(set) var didCancel = false
+    var averagePower: Float = -10.0
+
+    func start() throws {
+        didStart = true
+        isRecording = true
+    }
+
+    func stop() {
+        didStop = true
+        isRecording = false
+        finishHandler?(true)
+    }
+
+    func cancel() {
+        didCancel = true
+        isRecording = false
+        finishHandler?(false)
     }
 }
