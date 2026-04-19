@@ -286,7 +286,7 @@ extension AppDelegate {
                 Logger.app.error("Transcription failed: \(error.localizedDescription)")
 
                 if let speechError = error as? SpeechToTextError,
-                    case .noSpeechDetected = speechError
+                    speechError.shouldUseDockOnlyFeedback
                 {
                     SoundManager().playNoSpeechSound()
                 }
@@ -300,9 +300,15 @@ extension AppDelegate {
                     object: error.localizedDescription
                 )
 
+                if let speechError = error as? SpeechToTextError,
+                    speechError.shouldUseDockOnlyFeedback
+                {
+                    return
+                }
+
                 // Show error alert (user-visible)
                 DispatchQueue.main.async {
-                    ErrorPresenter.shared.showError("Transcription failed: \(error.localizedDescription)")
+                    ErrorPresenter.shared.showError(error.localizedDescription)
                 }
             }
         }

@@ -1718,9 +1718,11 @@ internal struct OnboardingView: View {
                     return
                 }
 
+                let sessionDuration = recorder.lastRecordingDuration ?? TimeInterval(recordingSeconds)
+
                 let result = try await TranscriptionCoordinator.shared.processRecording(
                     audioURL: audioURL,
-                    sessionDuration: TimeInterval(recordingSeconds),
+                    sessionDuration: sessionDuration,
                     shouldPaste: false
                 )
 
@@ -1730,7 +1732,7 @@ internal struct OnboardingView: View {
             } catch {
                 isTranscribing = false
                 testRecorder = nil
-                testError = "Transcription failed: \(error.localizedDescription)"
+                testError = error.localizedDescription
             }
         }
     }
