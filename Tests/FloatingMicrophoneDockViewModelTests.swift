@@ -79,9 +79,9 @@ final class FloatingMicrophoneDockViewModelTests: XCTestCase {
 
         viewModel.applyRecorderState(isRecording: false, audioLevel: 0, hasPermission: true)
         viewModel.handleTranscriptionStarted()
-        viewModel.handleTranscriptionFailed(message: "No speech detected in the recording.")
+        viewModel.handleTranscriptionFailed(message: "No speech detected.")
 
-        XCTAssertEqual(viewModel.status, .error("No speech detected in the recording."))
+        XCTAssertEqual(viewModel.status, .error("No speech detected."))
         XCTAssertEqual(viewModel.visualStyle, .expandedIdle)
 
         try? await Task.sleep(for: .milliseconds(200))

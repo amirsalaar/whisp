@@ -9,7 +9,17 @@ internal enum SpeechToTextError: Error, LocalizedError {
     case transcriptionFailed(String)
     case localTranscriptionFailed(Error)
     case fileTooLarge
+    case recordingTooShort
     case noSpeechDetected
+
+    var shouldUseDockOnlyFeedback: Bool {
+        switch self {
+        case .recordingTooShort, .noSpeechDetected:
+            return true
+        default:
+            return false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
@@ -26,8 +36,10 @@ internal enum SpeechToTextError: Error, LocalizedError {
                 .replacingOccurrences(of: "%@", with: error.localizedDescription)
         case .fileTooLarge:
             return LocalizedStrings.Errors.fileTooLarge
+        case .recordingTooShort:
+            return LocalizedStrings.Errors.recordingTooShort
         case .noSpeechDetected:
-            return "No speech detected in the recording."
+            return LocalizedStrings.Errors.noSpeechDetected
         }
     }
 }
@@ -100,15 +112,8 @@ internal class SpeechToTextService {
     func transcribeRaw(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil)
         async throws -> String
     {
-        // Validate audio file before processing
-        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
-        switch validationResult {
-        case .valid(_): break
-        case .invalid(.silentAudio):
-            throw SpeechToTextError.noSpeechDetected
-        case .invalid(let error):
-            throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
-        }
+        try await validateAudioFile(at: audioURL)
+
         switch provider {
         case .openai:
             return try await transcribeWithOpenAI(audioURL: audioURL)
@@ -142,14 +147,7 @@ internal class SpeechToTextService {
     func transcribe(audioURL: URL, provider: TranscriptionProvider, model: WhisperModel? = nil) async throws
         -> String
     {
-        // Validate audio file before processing
-        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
-        switch validationResult {
-        case .valid(_):
-            break  // Audio file validated successfully
-        case .invalid(let error):
-            throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
-        }
+        try await validateAudioFile(at: audioURL)
 
         switch provider {
         case .openai:
@@ -434,8 +432,25 @@ internal class SpeechToTextService {
             return cleaned
         } catch let e as SpeechToTextError {
             throw e
+        } catch let error as LocalWhisperError {
+            if case .transcriptionFailed = error {
+                throw SpeechToTextError.noSpeechDetected
+            }
+            throw SpeechToTextError.localTranscriptionFailed(error)
         } catch {
             throw SpeechToTextError.localTranscriptionFailed(error)
+        }
+    }
+
+    private func validateAudioFile(at audioURL: URL) async throws {
+        let validationResult = await AudioValidator.validateAudioFile(at: audioURL)
+        switch validationResult {
+        case .valid:
+            return
+        case .invalid(.silentAudio):
+            throw SpeechToTextError.noSpeechDetected
+        case .invalid(let error):
+            throw SpeechToTextError.transcriptionFailed(error.localizedDescription)
         }
     }
 
