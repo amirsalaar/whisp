@@ -113,6 +113,33 @@ final class PressAndHoldKeyMonitorTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
     }
 
+    /// Simulates the onboarding completion path: the user accepted defaults without
+    /// touching any picker, and `completeOnboarding` calls `PressAndHoldSettings.update`
+    /// with the default configuration. The notification must fire so that
+    /// `AppDelegate.configureShortcutMonitors()` picks up the settings.
+    func testUpdateWithDefaultConfigurationPersistsAndNotifies() {
+        let defaults = makeDefaults()
+        let configuration = PressAndHoldConfiguration.defaults
+        let notificationExpectation = expectation(forNotification: .pressAndHoldSettingsChanged, object: nil)
+
+        PressAndHoldSettings.update(configuration, using: defaults)
+
+        wait(for: [notificationExpectation], timeout: 1.0)
+
+        XCTAssertEqual(
+            defaults.object(forKey: AppDefaults.Keys.pressAndHoldEnabled) as? Bool,
+            PressAndHoldConfiguration.defaults.enabled
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: AppDefaults.Keys.pressAndHoldKeyIdentifier),
+            PressAndHoldConfiguration.defaults.key.rawValue
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: AppDefaults.Keys.pressAndHoldMode),
+            PressAndHoldConfiguration.defaults.mode.rawValue
+        )
+    }
+
     // MARK: - start()
 
     func testStartReturnsFalseForGlobeKey() {

@@ -1586,6 +1586,13 @@ internal struct OnboardingView: View {
     // MARK: - Completion
 
     private func completeOnboarding() {
+        // Ensure the final press-and-hold configuration is persisted and published so
+        // AppDelegate.configureShortcutMonitors() picks it up — even when the user
+        // accepted the defaults without changing any picker.
+        if pressAndHoldEnabled {
+            publishPressAndHoldConfiguration()
+        }
+
         UserDefaults.standard.set(true, forKey: AppDefaults.Keys.hasCompletedWelcome)
         UserDefaults.standard.set(
             AppDefaults.currentWelcomeVersion, forKey: AppDefaults.Keys.lastWelcomeVersion)
