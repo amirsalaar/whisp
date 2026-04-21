@@ -3,12 +3,16 @@ name: Release
 # Release model (first principles):
 #
 #   * The git tag is the single source of truth for a release version.
-#     A release is produced iff a `vX.Y.Z` tag exists.
+#     A release is produced iff a `vX.Y.Z` tag exists (or is created here).
 #
-#   * Two entry points, same job:
-#       1. `push` of a `vX.Y.Z` tag  -> build and publish that tag.
-#       2. `workflow_dispatch`       -> workflow creates the tag from the
-#          provided version, then builds and publishes.
+#   * Three entry points, same job:
+#       1. `push` of a `vX.Y.Z` tag   -> build and publish that tag.
+#       2. `workflow_dispatch`        -> pick a bump (patch/minor/major) or
+#          provide an explicit version; the workflow creates the tag.
+#       3. `push` to `master` whose   -> opt-in auto-release. The head
+#          head commit message         commit message must contain
+#          contains `[release]`        `[release]` (defaults to patch) or
+#                                      `[release:patch|minor|major]`.
 #
 #   * CI never mutates `master` (no VERSION bump commits, no branch pushes).
 #     Branch protection therefore cannot break releases.
@@ -21,13 +25,23 @@ name: Release
 
 on:
   push:
+    branches: [master]
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Semantic version to release (x.y.z). A tag vX.Y.Z will be created."
+      bump:
+        description: "Version bump to apply (ignored if 'version' is set)."
         required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: "Optional explicit version x.y.z (overrides bump)."
+        required: false
         type: string
 
 concurrency:
@@ -55,25 +69,92 @@ jobs:
 
       - name: Resolve release version
         id: v
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION: ${{ inputs.version }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+
+          bump_version() {
+            local base="$1" kind="$2" major minor patch
+            IFS='.' read -r major minor patch <<<"$base"
+            case "$kind" in
+              major) echo "$((major + 1)).0.0" ;;
+              minor) echo "${major}.$((minor + 1)).0" ;;
+              patch) echo "${major}.${minor}.$((patch + 1))" ;;
+              *) echo "::error::Unknown bump '$kind'" >&2; return 1 ;;
+            esac
+          }
+
+          latest_semver_tag() {
+            git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1
+          }
+
+          SHOULD_RELEASE=true
+          CREATE_TAG=false
+          VERSION=""
+
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            # Path 1: tag push. The tag is the version.
+            VERSION="${REF_NAME#v}"
+
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Path 2: manual dispatch. Explicit version wins; otherwise bump.
+            if [ -n "${INPUT_VERSION:-}" ]; then
+              VERSION="$INPUT_VERSION"
+            else
+              LATEST="$(latest_semver_tag || true)"
+              BASE="${LATEST#v}"
+              BASE="${BASE:-0.0.0}"
+              VERSION="$(bump_version "$BASE" "${INPUT_BUMP:-patch}")"
+            fi
+            CREATE_TAG=true
+
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ]; then
+            # Path 3: master push. Opt-in via [release] / [release:kind] in head commit.
+            if printf '%s' "$HEAD_MSG" | grep -qiE '\[release(:(patch|minor|major))?\]'; then
+              KIND="$(printf '%s' "$HEAD_MSG" \
+                | grep -oiE '\[release:(patch|minor|major)\]' \
+                | head -1 \
+                | sed -E 's/.*:([a-z]+)\]/\1/' \
+                | tr '[:upper:]' '[:lower:]' || true)"
+              KIND="${KIND:-patch}"
+              LATEST="$(latest_semver_tag || true)"
+              BASE="${LATEST#v}"
+              BASE="${BASE:-0.0.0}"
+              VERSION="$(bump_version "$BASE" "$KIND")"
+              CREATE_TAG=true
+              echo "ℹ️ Auto-release requested via commit trailer (kind=$KIND)."
+            else
+              echo "ℹ️ No [release] trailer in head commit. Skipping release."
+              SHOULD_RELEASE=false
+            fi
+
           else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid version '$VERSION'. Expected x.y.z."
+            echo "::error::Unsupported trigger ($EVENT_NAME / $REF_TYPE)."
             exit 1
           fi
-          TAG="v$VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
-          echo "WHISP_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "🚀 Release $TAG"
 
-      - name: Create and push tag (manual dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+          if [ "$SHOULD_RELEASE" = "true" ]; then
+            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid version '$VERSION'. Expected x.y.z."
+              exit 1
+            fi
+            TAG="v$VERSION"
+            echo "version=$VERSION"        >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
+            echo "create_tag=$CREATE_TAG"  >> "$GITHUB_OUTPUT"
+            echo "WHISP_VERSION=$VERSION"  >> "$GITHUB_ENV"
+            echo "🚀 Release $TAG (create_tag=$CREATE_TAG)"
+          fi
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: ${{ steps.v.outputs.should_release == 'true' && steps.v.outputs.create_tag == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -95,6 +176,7 @@ jobs:
 
       - name: Determine release packaging mode
         id: mode
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         run: |
           set -euo pipefail
           have_cert=false
@@ -120,7 +202,7 @@ jobs:
           echo "✅ Release mode: $mode"
 
       - name: Import Developer ID certificate
-        if: ${{ steps.mode.outputs.use_dev_id == 'true' }}
+        if: ${{ steps.v.outputs.should_release == 'true' && steps.mode.outputs.use_dev_id == 'true' }}
         run: |
           set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/dev-id-cert.p12"
@@ -149,9 +231,11 @@ jobs:
           echo "✅ Imported Developer ID: $IDENTITY"
 
       - name: Run tests
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         run: swift test
 
       - name: Build release app bundles
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         run: |
           set -euo pipefail
           case "${{ steps.mode.outputs.mode }}" in
@@ -167,6 +251,7 @@ jobs:
           esac
 
       - name: Create release DMG
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         run: |
           set -euo pipefail
           if [ "${{ steps.mode.outputs.mode }}" = "notarized" ]; then
@@ -176,17 +261,18 @@ jobs:
           fi
 
       - name: Create fallback app zip
-        if: ${{ steps.mode.outputs.include_zip == 'true' }}
-        run: ditto -c -k --keepParent "Whisp.app" "Whisp-${{ steps.v.outputs.version
-          }}.zip"
+        if: ${{ steps.v.outputs.should_release == 'true' && steps.mode.outputs.include_zip == 'true' }}
+        run: ditto -c -k --keepParent "Whisp.app" "Whisp-${{ steps.v.outputs.version }}.zip"
 
       - name: Create checksum
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         run: |
           shasum -a 256 "Whisp-${{ steps.v.outputs.version }}.dmg" \
             > "Whisp-${{ steps.v.outputs.version }}.dmg.sha256"
 
       - name: Generate release notes
         id: notes
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -246,6 +332,7 @@ jobs:
           echo "---------------------"
 
       - name: Publish GitHub Release
+        if: ${{ steps.v.outputs.should_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.v.outputs.tag }}
