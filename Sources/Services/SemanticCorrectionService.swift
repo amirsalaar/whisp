@@ -345,13 +345,30 @@ internal final class SemanticCorrectionService {
     ) -> String? {
         guard !snapshot.isEmpty else { return nil }
 
-        var lines = [
+        let omittedLine = "- Additional terms omitted for brevity."
+        let headerLines = [
             "Personal dictionary:",
             "- When one of these terms is relevant, use the exact preferred spelling.",
             "- Do not invent a dictionary term unless the audio clearly referred to it.",
         ]
-        var renderedLength = lines.joined(separator: "\n").count
+
+        let headerLength = headerLines.joined(separator: "\n").count
+        guard headerLength <= maximumRenderedLength else { return nil }
+
+        var lines = headerLines
+        var renderedLength = headerLength
         var includedCount = 0
+
+        func appendLineIfFits(_ line: String) -> Bool {
+            let separatorLength = lines.isEmpty ? 0 : 1
+            guard renderedLength + separatorLength + line.count <= maximumRenderedLength else {
+                return false
+            }
+
+            lines.append(line)
+            renderedLength += separatorLength + line.count
+            return true
+        }
 
         for rule in snapshot.rules {
             let line: String
@@ -361,17 +378,20 @@ internal final class SemanticCorrectionService {
                 line = "- \(rule.preferredText): \(rule.aliases.joined(separator: ", "))"
             }
 
-            guard includedCount == 0 || renderedLength + line.count + 1 <= maximumRenderedLength else {
+            guard appendLineIfFits(line) else {
                 break
             }
-
-            lines.append(line)
-            renderedLength += line.count + 1
             includedCount += 1
         }
 
         if includedCount < snapshot.rules.count {
-            lines.append("- Additional terms omitted for brevity.")
+            while !appendLineIfFits(omittedLine), includedCount > 1 {
+                let removedLine = lines.removeLast()
+                renderedLength -= removedLine.count + 1
+                includedCount -= 1
+            }
+
+            _ = appendLineIfFits(omittedLine)
         }
 
         return lines.joined(separator: "\n")

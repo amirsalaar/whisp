@@ -194,6 +194,6 @@ internal final class PersonalDictionaryStore: PersonalDictionaryProviding {
 
     private static func canonicalKey(_ value: String) -> String {
         normalizedPhrase(value)
-            .folding(options: [.caseInsensitive], locale: .current)
+            .folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 }

@@ -330,7 +330,7 @@ internal struct DashboardDictionaryView: View {
                     .font(DashboardTheme.Fonts.sans(12, weight: .regular))
                     .foregroundStyle(DashboardTheme.inkMuted)
 
-                Text(displayHomeRelativePath(path))
+                Text(PathFormatting.displayHomeRelativePath(path))
                     .font(DashboardTheme.Fonts.mono(12, weight: .regular))
                     .foregroundStyle(DashboardTheme.inkLight)
                     .textSelection(.enabled)

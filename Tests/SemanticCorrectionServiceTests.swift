@@ -224,11 +224,29 @@ final class SemanticCorrectionServiceTests: XCTestCase {
 
         let instructions = SemanticCorrectionService.personalDictionaryInstructions(
             for: snapshot,
-            maximumRenderedLength: 180
+            maximumRenderedLength: 260
         )
 
         XCTAssertNotNil(instructions)
+        XCTAssertLessThanOrEqual(instructions?.count ?? .max, 260)
         XCTAssertTrue(instructions?.contains("Additional terms omitted for brevity.") == true)
+    }
+
+    func testPersonalDictionaryInstructionsSkipOverlongFirstRuleToStayWithinLimit() {
+        let veryLongAlias = Array(repeating: "excessively verbose alias segment", count: 12)
+            .joined(separator: ", ")
+        let snapshot = PersonalDictionarySnapshot(rules: [
+            PersonalDictionaryRule(preferredText: "Whisp", aliases: [veryLongAlias])
+        ])
+
+        let instructions = SemanticCorrectionService.personalDictionaryInstructions(
+            for: snapshot,
+            maximumRenderedLength: 200
+        )
+
+        XCTAssertNotNil(instructions)
+        XCTAssertLessThanOrEqual(instructions?.count ?? .max, 200)
+        XCTAssertFalse(instructions?.contains(veryLongAlias) == true)
     }
 
     func testApplyPersonalDictionaryCanonicalizesAliasesCaseInsensitively() {
