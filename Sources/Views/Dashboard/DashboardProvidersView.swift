@@ -115,7 +115,9 @@ internal struct DashboardProvidersView: View {
             } header: {
                 Text("Semantic Correction")
             } footer: {
-                Text("Clean up grammar, punctuation, and filler words after transcription.")
+                Text(
+                    "Clean up grammar, punctuation, and filler words after transcription. Manage preferred spellings in Dictionary."
+                )
             }
         }
         .formStyle(.grouped)
@@ -287,7 +289,7 @@ internal struct DashboardProvidersView: View {
                 .help("Refresh model list")
             }
 
-            Text("Cache: \(displayHomeRelativePath(HuggingFaceCache.hubDirectory().path))")
+            Text("Cache: \(PathFormatting.displayHomeRelativePath(HuggingFaceCache.hubDirectory().path))")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -558,7 +560,7 @@ private struct MLXModelsSheet: View {
                         row(for: model)
                     }
                 } footer: {
-                    Text("Cache: \(displayHomeRelativePath(HuggingFaceCache.hubDirectory().path))")
+                    Text("Cache: \(PathFormatting.displayHomeRelativePath(HuggingFaceCache.hubDirectory().path))")
                 }
             }
             .listStyle(.inset)
@@ -648,18 +650,4 @@ private struct MLXModelsSheet: View {
             selectedModelRepo = model.repo
         }
     }
-}
-
-private func displayHomeRelativePath(_ path: String) -> String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-
-    if path == home {
-        return "~"
-    }
-
-    guard path.hasPrefix(home + "/") else {
-        return path
-    }
-
-    return "~" + path.dropFirst(home.count)
 }

@@ -79,6 +79,7 @@ internal enum DashboardTheme {
 // MARK: - Navigation Item
 internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
     case providers = "Transcription"
+    case dictionary = "Dictionary"
     case recording = "Recording"
     case history = "History"
     case preferences = "Preferences"
@@ -89,6 +90,7 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
     var icon: String {
         switch self {
         case .providers: return "waveform.circle"
+        case .dictionary: return "text.book.closed"
         case .recording: return "keyboard"
         case .history: return "clock.arrow.circlepath"
         case .preferences: return "gearshape"
@@ -99,6 +101,7 @@ internal enum DashboardNavItem: String, CaseIterable, Identifiable, Hashable {
     var description: String {
         switch self {
         case .providers: return "Choose your engine and model"
+        case .dictionary: return "Names, spellings, and aliases"
         case .recording: return "Microphone and shortcuts"
         case .history: return "Past transcriptions"
         case .preferences: return "Startup, paste, and sound"
@@ -189,6 +192,8 @@ internal struct DashboardView: View {
         switch item {
         case .providers:
             DashboardProvidersView()
+        case .dictionary:
+            DashboardDictionaryView()
         case .recording:
             DashboardRecordingView()
         case .history:
