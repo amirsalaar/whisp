@@ -115,7 +115,9 @@ internal struct DashboardProvidersView: View {
             } header: {
                 Text("Semantic Correction")
             } footer: {
-                Text("Clean up grammar, punctuation, and filler words after transcription.")
+                Text(
+                    "Clean up grammar, punctuation, and filler words after transcription. Manage preferred spellings in Dictionary."
+                )
             }
         }
         .formStyle(.grouped)
@@ -650,7 +652,7 @@ private struct MLXModelsSheet: View {
     }
 }
 
-private func displayHomeRelativePath(_ path: String) -> String {
+func displayHomeRelativePath(_ path: String) -> String {
     let home = FileManager.default.homeDirectoryForCurrentUser.path
 
     if path == home {
