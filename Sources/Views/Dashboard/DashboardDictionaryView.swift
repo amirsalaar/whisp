@@ -290,56 +290,30 @@ internal struct DashboardDictionaryView: View {
                     }
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: DashboardTheme.Spacing.md) {
-                        workflowStep(
-                            number: "01",
-                            title: "Capture exact terms",
-                            detail:
-                                "Add the spellings you want preserved, plus the variants people actually say or dictate."
-                        )
+                VStack(spacing: 12) {
+                    workflowRow(
+                        number: "01",
+                        title: "Capture exact terms",
+                        detail:
+                            "Add the spellings you want preserved, plus the variants people actually say or dictate."
+                    )
 
-                        workflowStep(
-                            number: "02",
-                            title: semanticCorrectionMode == .off
-                                ? "Enable correction" : "Clean the transcript",
-                            detail: semanticCorrectionMode == .off
-                                ? "Turn on semantic correction in Transcription before dictionary replacements can run."
-                                : "Whisp fixes grammar and punctuation first, so the dictionary does not fight the cleanup pass."
-                        )
+                    workflowRow(
+                        number: "02",
+                        title: semanticCorrectionMode == .off
+                            ? "Enable correction" : "Clean the transcript",
+                        detail: semanticCorrectionMode == .off
+                            ? "Turn on semantic correction in Transcription before dictionary replacements can run."
+                            : "Whisp fixes grammar and punctuation first, so the dictionary does not fight the cleanup pass."
+                    )
 
-                        workflowStep(
-                            number: "03",
-                            title: "Lock the final spelling",
-                            detail:
-                                "Configured names, brands, and acronyms are normalized to the preferred form in the final result."
-                        )
-                    }
-
-                    VStack(spacing: DashboardTheme.Spacing.md) {
-                        workflowStep(
-                            number: "01",
-                            title: "Capture exact terms",
-                            detail:
-                                "Add the spellings you want preserved, plus the variants people actually say or dictate."
-                        )
-
-                        workflowStep(
-                            number: "02",
-                            title: semanticCorrectionMode == .off
-                                ? "Enable correction" : "Clean the transcript",
-                            detail: semanticCorrectionMode == .off
-                                ? "Turn on semantic correction in Transcription before dictionary replacements can run."
-                                : "Whisp fixes grammar and punctuation first, so the dictionary does not fight the cleanup pass."
-                        )
-
-                        workflowStep(
-                            number: "03",
-                            title: "Lock the final spelling",
-                            detail:
-                                "Configured names, brands, and acronyms are normalized to the preferred form in the final result."
-                        )
-                    }
+                    workflowRow(
+                        number: "03",
+                        title: "Lock the final spelling",
+                        detail:
+                            "Configured names, brands, and acronyms are normalized to the preferred form in the final result.",
+                        showsConnector: false
+                    )
                 }
             }
         }
@@ -454,30 +428,45 @@ internal struct DashboardDictionaryView: View {
         )
     }
 
-    private func workflowStep(number: String, title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(number)
-                .font(DashboardTheme.Fonts.mono(12, weight: .semibold))
-                .foregroundStyle(DashboardTheme.accent)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(DashboardTheme.accentLight))
+    private func workflowRow(
+        number: String,
+        title: String,
+        detail: String,
+        showsConnector: Bool = true
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 0) {
+                Text(number)
+                    .font(DashboardTheme.Fonts.mono(11, weight: .semibold))
+                    .foregroundStyle(DashboardTheme.accent)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(DashboardTheme.accentLight)
+                    )
 
-            Text(title)
-                .font(DashboardTheme.Fonts.sans(14, weight: .semibold))
-                .foregroundStyle(DashboardTheme.ink)
+                if showsConnector {
+                    Rectangle()
+                        .fill(DashboardTheme.rule.opacity(0.8))
+                        .frame(width: 1, height: 34)
+                        .padding(.top, 6)
+                }
+            }
 
-            Text(detail)
-                .font(DashboardTheme.Fonts.sans(12, weight: .regular))
-                .foregroundStyle(DashboardTheme.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DashboardTheme.Fonts.sans(14, weight: .semibold))
+                    .foregroundStyle(DashboardTheme.ink)
+
+                Text(detail)
+                    .font(DashboardTheme.Fonts.sans(12, weight: .regular))
+                    .foregroundStyle(DashboardTheme.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(DashboardTheme.cardBgAlt)
-        )
+        .padding(.horizontal, 2)
     }
 
     private func dictionaryCard<Content: View>(
